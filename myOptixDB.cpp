@@ -153,6 +153,7 @@ int main( int argc, char* argv[] )
         //
         OptixTraversableHandle gas_handle;
         CUdeviceptr            d_gas_output_buffer;
+        CUdeviceptr d_vertices=0;
         {
             // Use default options for simplicity.  In a real use case we would want to
             // enable compaction, etc
@@ -169,7 +170,7 @@ int main( int argc, char* argv[] )
             // };
 
             const size_t vertices_size = sizeof( float3 )*vertices.size();
-            CUdeviceptr d_vertices=0;
+            
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_vertices ), vertices_size ) );
             CUDA_CHECK( cudaMemcpy(
                         reinterpret_cast<void*>( d_vertices ),
@@ -224,7 +225,7 @@ int main( int argc, char* argv[] )
             // We can now free the scratch space buffer used during build and the vertex
             // inputs, since they are not needed by our trivial shading method
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_temp_buffer_gas ) ) );
-            CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_vertices        ) ) );
+            //CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_vertices        ) ) );
         }
 
         //
@@ -420,22 +421,28 @@ int main( int argc, char* argv[] )
 
         timer_.commonGetStartTime(1);
 
-        sutil::CUDAOutputBuffer<int> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
-        sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
-        // sutil::CUDAOutputBuffer<float> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
-        // sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
-
-        CUDA_CHECK(cudaMemset(output_buffer_0.map(), 0 , height * sizeof(int)));
-        CUDA_CHECK(cudaMemset(output_buffer_1.map(), 0 , height * sizeof(int)));
+        
 
         //
         // launch
         //
+        Params params;
         {
             CUstream stream;
             CUDA_CHECK( cudaStreamCreate( &stream ) );
 
-            Params params;
+            double predicate[6] = { 0,100,1,10,std::stoi(argv[1]),100};
+            
+            CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&params.resultValue), height * sizeof(int)));
+            CUDA_CHECK(cudaMemset(params.resultValue, 0 , height * sizeof(int)));
+            CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&params.resultCount), height * sizeof(int)));
+            CUDA_CHECK(cudaMemset(params.resultCount, 0 , height * sizeof(int)));
+            CUDA_CHECK(cudaMalloc(&params.predicate, 6 * sizeof(double)));
+            CUDA_CHECK(cudaMemcpy(params.predicate, predicate, 6 * sizeof(double), cudaMemcpyHostToDevice));
+            params.ray_interval = 1.0;
+            params.ray_space = 1.0;
+            params.ray_stride = 2.0;
+            params.points = reinterpret_cast<float3 *>(d_vertices);
             params.handle = gas_handle;
             params.bias = 1e-5;
             params.rayMode = std::stoi(argv[2]);
@@ -445,8 +452,7 @@ int main( int argc, char* argv[] )
             params.minGroupbyValue = 1;
             params.maxWhereValue = 100;
             params.minWhereValue = std::stoi(argv[1]);
-            params.resultValue = output_buffer_0.map();
-            params.resultCount = output_buffer_1.map();
+            
             if(params.rayMode == 0){
                 depth = (params.maxWhereValue - params.minWhereValue + 2) / 2;
                 params.rayLength = 1.0f;
@@ -471,6 +477,7 @@ int main( int argc, char* argv[] )
             timer_.commonGetStartTime(2);
 
             OPTIX_CHECK( optixLaunch( pipeline, stream, d_param, sizeof( Params ), &sbt, width, height, depth ) );
+            fprintf(stdout,"%lf--%lf--%lf--%lf--%lf\n",params.ray_interval,params.ray_space,params.ray_stride,params.rayLength,params.rayLastLength);
             CUDA_SYNC_CHECK();
 
             timer_.commonGetEndTime(2);
@@ -480,8 +487,11 @@ int main( int argc, char* argv[] )
             timer_.showTime(2, "optixLaunch");
             timer_.clear();
 
-            output_buffer_0.unmap();
-            output_buffer_1.unmap();
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void *>(&params),
+                reinterpret_cast<void *>(d_param),
+                sizeof(Params),
+                cudaMemcpyDeviceToHost));
 
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_param ) ) );
         }
@@ -490,8 +500,18 @@ int main( int argc, char* argv[] )
         // Display results
         //
         {
-            int* resultValue = output_buffer_0.getHostPointer();
-            int* resultCount = output_buffer_1.getHostPointer();
+            int *resultValue = (int *)malloc(height * sizeof(int));
+            int *resultCount = (int *)malloc(height * sizeof(int));
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void *>(resultValue),
+                params.resultValue,
+                height * sizeof(int),
+                cudaMemcpyDeviceToHost));
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void *>(resultCount),
+                params.resultCount,
+                height * sizeof(int),
+                cudaMemcpyDeviceToHost));
             std::cout << "---------------------------------------------------" << std::endl;
             for(int i = 0;i < height;++i)
             {

@@ -34,11 +34,16 @@ struct Params
     int maxGroupbyValue;
     int minWhereValue;
     int maxWhereValue;
+    double ray_interval;
+    double ray_space;
+    double ray_stride;
+    double* predicate;
     OptixTraversableHandle handle;
     float bias;
     int rayMode;
     float rayLength;
     float rayLastLength;
+    float3* points;  
     int* resultValue;
     int* resultCount;
 };

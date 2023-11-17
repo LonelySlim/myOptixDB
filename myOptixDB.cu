@@ -45,7 +45,9 @@ extern "C" __global__ void __raygen__rg()
 
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
-    float3 ray_origin = {idx.x + params.minSelectValue,idx.y + params.minGroupbyValue,idx.z * 2 + params.minWhereValue - params.bias};
+    float3 ray_origin = {float(idx.x * params.ray_interval + params.predicate[0]),
+                            float(idx.y * params.ray_interval + params.predicate[2]),
+                            float(idx.z * params.ray_stride + params.predicate[4] - params.bias)};
     float3 ray_direction = {0,0,1};
 
     float rayLength = params.rayLength + 2 * params.bias;
@@ -70,8 +72,7 @@ extern "C" __global__ void __raygen__rg()
             0,                   // missSBTIndex -- See SBT discussion
             p0 ,p1);
 
-    atomicAdd(&params.resultValue[idx.y] , p0);
-    atomicAdd(&params.resultCount[idx.y] , p1);
+    
 }
 
 
@@ -89,7 +90,9 @@ extern "C" __global__ void __closesthit__ch()
 extern "C" __global__ void __anyhit__ah()
 {
     const uint3 idx = optixGetLaunchIndex();
-    optixSetPayload_0(optixGetPayload_0() + idx.x + params.minSelectValue);
-    optixSetPayload_1(optixGetPayload_1() + 1);
+    unsigned int primIdx = optixGetPrimitiveIndex();
+    float3 point = params.points[primIdx * 3];
+    atomicAdd(params.resultValue + idx.y , (int)point.x);
+    atomicAdd(params.resultCount + idx.y , 1);
     optixIgnoreIntersection();
 }
