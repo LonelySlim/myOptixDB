@@ -80,6 +80,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
 
 static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in)
 {
+    fprintf(stdout,"[execute] Create vertices array begin...\n");
     float p1,p2,p3;
     std::string line;
     while(std::getline(in,line))
@@ -132,6 +133,7 @@ int main( int argc, char* argv[] )
         //
         OptixDeviceContext context = nullptr;
         {
+            fprintf(stdout,"[execute] Initialize CUDA and create OptiX context begin...\n");
             // Initialize CUDA
             CUDA_CHECK( cudaFree( 0 ) );
 
@@ -156,6 +158,7 @@ int main( int argc, char* argv[] )
         OptixTraversableHandle gas_handle;
         CUdeviceptr            d_gas_output_buffer;
         {
+            fprintf(stdout,"[execute] Accel handling begin...\n");
             // Use default options for simplicity.  In a real use case we would want to
             // enable compaction, etc
             OptixAccelBuildOptions accel_options = {};
@@ -236,6 +239,7 @@ int main( int argc, char* argv[] )
         OptixModule module = nullptr;
         OptixPipelineCompileOptions pipeline_compile_options = {};
         {
+            fprintf(stdout,"[execute] Create module begin...\n");
             OptixModuleCompileOptions module_compile_options = {};
             module_compile_options.maxRegisterCount     = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
             module_compile_options.optLevel             = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
@@ -276,6 +280,7 @@ int main( int argc, char* argv[] )
         OptixProgramGroup miss_prog_group     = nullptr;
         OptixProgramGroup hitgroup_prog_group = nullptr;
         {
+            fprintf(stdout,"[execute] Create program groups begin...\n");
             OptixProgramGroupOptions program_group_options   = {}; // Initialize to zeros
 
             OptixProgramGroupDesc raygen_prog_group_desc    = {}; //
@@ -332,6 +337,7 @@ int main( int argc, char* argv[] )
         //
         OptixPipeline pipeline = nullptr;
         {
+            fprintf(stdout,"[execute] Link pipeline begin...\n");
             const uint32_t    max_trace_depth  = 1;
             OptixProgramGroup program_groups[] = { raygen_prog_group, miss_prog_group, hitgroup_prog_group };
 
@@ -376,6 +382,7 @@ int main( int argc, char* argv[] )
         //
         OptixShaderBindingTable sbt = {};
         {
+            fprintf(stdout,"[execute] Set up shader binding table begin...\n");
             CUdeviceptr  raygen_record;
             const size_t raygen_record_size = sizeof( RayGenSbtRecord );
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &raygen_record ), raygen_record_size ) );
@@ -439,6 +446,7 @@ int main( int argc, char* argv[] )
         // launch
         //
         {
+            fprintf(stdout,"[execute] Launch begin...\n");
             CUstream stream;
             CUDA_CHECK( cudaStreamCreate( &stream ) );
 
@@ -498,6 +506,7 @@ int main( int argc, char* argv[] )
         // Display results
         //
         {
+            fprintf(stdout,"[execute] Display results begin...\n");
             int* resultValue = output_buffer_0.getHostPointer();
             int* resultCount = output_buffer_1.getHostPointer();
             std::cout << "---------------------------------------------------" << std::endl;
@@ -514,6 +523,7 @@ int main( int argc, char* argv[] )
         // Cleanup
         //
         {
+            fprintf(stdout,"[execute] Cleanup begin...\n");
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( sbt.raygenRecord       ) ) );
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( sbt.missRecordBase     ) ) );
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( sbt.hitgroupRecordBase ) ) );
