@@ -99,6 +99,7 @@ static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in
         vertices.push_back({p1 - 0.5f, p2 - 0.5f, p3 - 0.5f});
         vertices.push_back({p1 - 0.5f, p2 + 0.5f, p3 + 0.5f});
     }
+    fprintf(stdout,"[execute] Create vertices array done\n");
 }
 
 int main( int argc, char* argv[] )
@@ -146,6 +147,7 @@ int main( int argc, char* argv[] )
             // device context
             CUcontext cuCtx = 0;  // zero means take the current context
             OPTIX_CHECK( optixDeviceContextCreate( cuCtx, &options, &context ) );
+            fprintf(stdout,"[execute] Initialize CUDA and create OptiX context done\n");
         }
 
         //
@@ -225,6 +227,7 @@ int main( int argc, char* argv[] )
             // inputs, since they are not needed by our trivial shading method
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_temp_buffer_gas ) ) );
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_vertices        ) ) );
+            fprintf(stdout,"[execute] Accel handling done\n");
         }
 
         //
@@ -263,6 +266,7 @@ int main( int argc, char* argv[] )
                         &sizeof_log,
                         &module
                         ) );
+            fprintf(stdout,"[execute] Create module done\n");
         }
 
         //
@@ -320,6 +324,7 @@ int main( int argc, char* argv[] )
                         &sizeof_log,
                         &hitgroup_prog_group
                         ) );
+            fprintf(stdout,"[execute] Create program groups done\n");
         }
 
         //
@@ -363,6 +368,7 @@ int main( int argc, char* argv[] )
                                                     direct_callable_stack_size_from_state, continuation_stack_size,
                                                     1  // maxTraversableDepth
                                                     ) );
+            fprintf(stdout,"[execute] Link pipeline done\n");
         }
 
         //
@@ -413,10 +419,11 @@ int main( int argc, char* argv[] )
             sbt.hitgroupRecordBase          = hitgroup_record;
             sbt.hitgroupRecordStrideInBytes = sizeof( HitGroupSbtRecord );
             sbt.hitgroupRecordCount         = 1;
+            fprintf(stdout,"[execute] Set up shader binding table done\n");
         }
 
         timer_.commonGetEndTime(0);
-        timer_.showTime(0, "initializeOptix");
+        timer_.showTime(0, "Initialize");
 
         timer_.commonGetStartTime(1);
 
@@ -476,14 +483,15 @@ int main( int argc, char* argv[] )
             timer_.commonGetEndTime(2);
             timer_.commonGetEndTime(1);
 
-            timer_.showTime(1, "refineWithOptix");
-            timer_.showTime(2, "optixLaunch");
+            timer_.showTime(1, "Launch(Prepare included)");
+            timer_.showTime(2, "Launch");
             timer_.clear();
 
             output_buffer_0.unmap();
             output_buffer_1.unmap();
 
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_param ) ) );
+            fprintf(stdout,"[execute] Launch done\n");
         }
 
         //
@@ -493,10 +501,13 @@ int main( int argc, char* argv[] )
             int* resultValue = output_buffer_0.getHostPointer();
             int* resultCount = output_buffer_1.getHostPointer();
             std::cout << "---------------------------------------------------" << std::endl;
+            fprintf(stdout,"Result below:\n");
             for(int i = 0;i < height;++i)
             {
-                std::cout << resultValue[i] << ' ' << resultCount[i] << ' ' << ((float)resultValue[i])/resultCount[i] << std::endl;
+                std::cout << i << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << ((float)resultValue[i])/resultCount[i] << std::endl;
             }
+            std::cout << "---------------------------------------------------" << std::endl;
+            fprintf(stdout,"[execute] Display results done\n");
         }
         
         //
@@ -515,6 +526,7 @@ int main( int argc, char* argv[] )
             OPTIX_CHECK( optixModuleDestroy( module ) );
 
             OPTIX_CHECK( optixDeviceContextDestroy( context ) );
+            fprintf(stdout,"[execute] Cleanup done\n");
         }
     }
     catch( std::exception& e )
