@@ -41,6 +41,7 @@
 
 #include "myOptixDB.h"
 #include "timer.h"
+#include "group.h"
 
 #include <array>
 #include <iomanip>
@@ -49,7 +50,6 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include <chrono>
 
 #include <sutil/Camera.h>
 #include <sutil/Trackball.h>
@@ -78,10 +78,10 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
               << message << "\n";
 }
 
-static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in)
+static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in,int* dimCounts, const std::vector<int>& groupDimScale)
 {
     fprintf(stdout,"[execute] Create vertices array begin...\n");
-    float p1,p2,p3;
+    int p1,p2,p3;
     std::string line;
     while(std::getline(in,line))
     {
@@ -89,14 +89,18 @@ static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in
         std::string element;
         std::getline(iss, element, ' ');
         p1 = std::stoi(element);
-        std::getline(iss, element, ' ');
-        p2 = std::stoi(element);
+        vector<int> groups;
+        for(int j = 0;j < dimCounts[1];++j){
+            std::getline(iss,element,' ');
+            groups.push_back(std::stoi(element));
+        }
+        groupMerge(groups,groupDimScale,dimCounts[1],p2);
         std::getline(iss, element, ' ');
         p3 = std::stoi(element);
         // vertices.push_back({p1 + 0.5f, p2, p3});
         // vertices.push_back({p1, p2 - 0.5f, p3});
         // vertices.push_back({p1, p2 + 0.5f, p3});
-        vertices.push_back({p1 + 0.5f, p2, p3});
+        vertices.push_back({p1 + 0.5f, (float)p2, (float)p3});
         vertices.push_back({p1 - 0.5f, p2 - 0.5f, p3 - 0.5f});
         vertices.push_back({p1 - 0.5f, p2 + 0.5f, p3 + 0.5f});
     }
@@ -105,10 +109,11 @@ static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in
 
 int main( int argc, char* argv[] )
 {
-    std::string outfile;
     int         width  = 101;
-    int         height = 10;
+    int         height = 100;
     int         depth  = 1;
+    int         dimCounts[3] = {1,2,1};
+    vector<int> groupDimScale = {10,10};
 
     try
     {
@@ -116,13 +121,14 @@ int main( int argc, char* argv[] )
 
 
         std::vector<float3> vertices;
-        std::ifstream in("/home/sxr/rtdb/SDK/optixDB/tools/generateData/uniform_data_100000000.0_10.txt");
+        //std::ifstream in("/home/sxr/rtdb/SDK/optixDB/tools/generateData/uniform_data_100000000.0_10.txt");
+        std::ifstream in("/home/sxr/rtdb/SDK/myOptixDB/tools/data/uniform_data_100000000.0_10_2.txt");
         if(!in.is_open())
         {
             std::cerr << "can not open file outputdata.txt !" << std::endl;
             return 1;
         }
-        createVerticesArray(vertices, in);
+        createVerticesArray(vertices, in, dimCounts, groupDimScale);
         in.close();
 
 
@@ -456,8 +462,8 @@ int main( int argc, char* argv[] )
             params.rayMode = std::stoi(argv[2]);
             params.maxSelectValue = 100;
             params.minSelectValue = 0;
-            params.maxGroupbyValue = 10;
-            params.minGroupbyValue = 1;
+            params.maxGroupbyValue = 99;
+            params.minGroupbyValue = 0;
             params.maxWhereValue = 100;
             params.minWhereValue = std::stoi(argv[1]);
             params.resultValue = output_buffer_0.map();
@@ -511,9 +517,11 @@ int main( int argc, char* argv[] )
             int* resultCount = output_buffer_1.getHostPointer();
             std::cout << "---------------------------------------------------" << std::endl;
             fprintf(stdout,"Result below:\n");
+            std::vector<int> newGroups = {0,0};
             for(int i = 0;i < height;++i)
             {
-                std::cout << i << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << ((float)resultValue[i])/resultCount[i] << std::endl;
+                groupMergeInverse(newGroups,groupDimScale,dimCounts[1],i);
+                std::cout << newGroups[0] << ' ' << newGroups[1] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << ((double)resultValue[i])/resultCount[i] << std::endl;
             }
             std::cout << "---------------------------------------------------" << std::endl;
             fprintf(stdout,"[execute] Display results done\n");

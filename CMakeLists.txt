@@ -31,6 +31,7 @@ OPTIX_add_sample_executable( myOptixDB target_name
   myOptixDB.cpp
   myOptixDB.h
   timer.h
+  group.h
   OPTIONS -rdc true
   )
 
