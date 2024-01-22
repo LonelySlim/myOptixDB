@@ -50,6 +50,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <float.h>
 
 #include <sutil/Camera.h>
 #include <sutil/Trackball.h>
@@ -61,6 +62,43 @@ struct SbtRecord
 {
     __align__( OPTIX_SBT_RECORD_ALIGNMENT ) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
     T data;
+};
+
+struct RangeRecord
+{
+    float minAvgValue = FLT_MAX;
+    float maxAvgValue = FLT_MIN;
+    int minGroupValue = INT_MAX;
+    int maxGroupValue = INT_MIN;
+    int minScanValue  = INT_MAX;
+    int maxScanValue  = INT_MIN;
+
+    void modifyAvg(float avgvalue) {
+        if(avgvalue < minAvgValue) {
+            minAvgValue = avgvalue;
+        }
+        if(avgvalue > maxAvgValue) {
+            maxAvgValue = avgvalue;
+        }
+    }
+
+    void modifyGroup(int groupvalue) {
+        if(groupvalue < minGroupValue) {
+            minGroupValue = groupvalue;
+        }
+        if(groupvalue > maxGroupValue) {
+            maxGroupValue = groupvalue;
+        }
+    }
+
+    void modifyScan(int scanvalue) {
+        if(scanvalue < minScanValue) {
+            minScanValue = scanvalue;
+        }
+        if(scanvalue > maxScanValue) {
+            maxScanValue = scanvalue;
+        }
+    }
 };
 
 typedef SbtRecord<RayGenData>     RayGenSbtRecord;
@@ -78,42 +116,96 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
               << message << "\n";
 }
 
-static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in,int* dimCounts, const std::vector<int>& groupDimScale)
-{
-    fprintf(stdout,"[execute] Create vertices array begin...\n");
-    int p1,p2,p3;
-    std::string line;
-    while(std::getline(in,line))
-    {
-        std::istringstream iss(line);
-        std::string element;
-        std::getline(iss, element, ' ');
-        p1 = std::stoi(element);
-        vector<int> groups;
-        for(int j = 0;j < dimCounts[1];++j){
-            std::getline(iss,element,' ');
-            groups.push_back(std::stoi(element));
-        }
-        groupMerge(groups,groupDimScale,dimCounts[1],p2);
-        std::getline(iss, element, ' ');
-        p3 = std::stoi(element);
-        // vertices.push_back({p1 + 0.5f, p2, p3});
-        // vertices.push_back({p1, p2 - 0.5f, p3});
-        // vertices.push_back({p1, p2 + 0.5f, p3});
-        vertices.push_back({p1 + 0.5f, (float)p2, (float)p3});
-        vertices.push_back({p1 - 0.5f, p2 - 0.5f, p3 - 0.5f});
-        vertices.push_back({p1 - 0.5f, p2 + 0.5f, p3 + 0.5f});
+// static void createVerticesArray(std::vector<float3>& vertices, std::ifstream& in,int* dimCounts, const std::vector<int>& groupDimScale)
+// {
+//     fprintf(stdout,"[execute] Create vertices array begin...\n");
+//     int p1,p2,p3;
+//     std::string line;
+//     while(std::getline(in,line))
+//     {
+//         std::istringstream iss(line);
+//         std::string element;
+//         std::getline(iss, element, ' ');
+//         p1 = std::stoi(element);
+//         vector<int> groups;
+//         for(int j = 0;j < dimCounts[1];++j){
+//             std::getline(iss,element,' ');
+//             groups.push_back(std::stoi(element));
+//         }
+//         groupMerge(groups,groupDimScale,dimCounts[1],p2);
+//         std::getline(iss, element, ' ');
+//         p3 = std::stoi(element);
+//         // vertices.push_back({p1 + 0.5f, p2, p3});
+//         // vertices.push_back({p1, p2 - 0.5f, p3});
+//         // vertices.push_back({p1, p2 + 0.5f, p3});
+//         vertices.push_back({p1 + 0.5f, (float)p2, (float)p3});
+//         vertices.push_back({p1 - 0.5f, p2 - 0.5f, p3 - 0.5f});
+//         vertices.push_back({p1 - 0.5f, p2 + 0.5f, p3 + 0.5f});
+//     }
+//     fprintf(stdout,"[execute] Create vertices array done\n");
+// }
+
+RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int* dimCounts, std::vector<int>& groupDimScale, int data_num) {
+    double *avgbuffer[MAX_AVG_NUM];
+    int *groupbuffer[MAX_GROUP_NUM];
+    int *scanbuffer[MAX_SCAN_NUM];
+    RangeRecord rr;
+
+    for(int i = 0;i < dimCounts[0]; i++){
+        avgbuffer[i] = (double *)malloc(sizeof(double) * data_num);
+        fread(avgbuffer[i], sizeof(double), data_num, inputfile);
     }
-    fprintf(stdout,"[execute] Create vertices array done\n");
+    for(int i = 0;i < dimCounts[1]; i++){
+        groupbuffer[i] = (int *)malloc(sizeof(int) * data_num);
+        fread(groupbuffer[i], sizeof(int), data_num, inputfile);
+        //groupDimScale[i] = mapGroup(groupbuffer[i], i, data_num);
+        //printf("\nDIM:%d\n", groupDimScale[i]);
+    }
+    for(int i = 0;i < dimCounts[2]; i++){
+        scanbuffer[i] = (int *)malloc(sizeof(int) * data_num);
+        fread(scanbuffer[i], sizeof(int), data_num, inputfile);
+    }
+    mapGroups(groupbuffer, dimCounts[1], data_num);
+    for(int i = 0; i < data_num; i++) {
+        double p1 = avgbuffer[0][i];
+        rr.modifyAvg((float)p1);
+        // int p2;
+        // vector<int> groups;
+        // for(int j = 0;j < dimCounts[1];++j){
+        //     groups.push_back(groupbuffer[j][i]);
+        //     //groups.push_back(inversegroupmap[j][groupbuffer[j][i]]);
+        //     //printf("\n%d\n", groups[j]);
+        // }
+        // groupMerge(groups,groupDimScale,dimCounts[1],p2);
+        Groups groups;
+        groups.groupnum = dimCounts[1];
+        for(int j = 0; j < dimCounts[1]; j++) {
+            groups.groupvector[j] = groupbuffer[j][i];
+        }
+        int p2 = getGroupFromGroupsMap(groups);
+        rr.modifyGroup(p2);
+        int p3 = scanbuffer[0][i];
+        rr.modifyScan(p3);
+        vertices.push_back({(float)p1 + 500.0f, (float)p2, (float)p3});
+        vertices.push_back({(float)p1 - 500.0f, (float)p2 - 0.5f, (float)p3 - 0.5f});
+        vertices.push_back({(float)p1 - 500.0f, (float)p2 + 0.5f, (float)p3 + 0.5f});
+    }
+    return rr;
 }
 
 int main( int argc, char* argv[] )
 {
-    int         width  = 101;
-    int         height = 100;
-    int         depth  = 1;
+    int         width;
+    int         height;
+    int         depth = 1;
     int         dimCounts[3] = {1,2,1};
-    vector<int> groupDimScale = {10,10};
+    vector<int> groupDimScale = {150000,25};
+    bool        useBitmap = true;
+    FILE *bitmapfile = fopen("/home/sxr/resultbitmapq10.txt", "rb");
+    int         data_num = 6001215;
+    unsigned int *bitmap = (unsigned int *)malloc(((data_num + 31) >> 5) * sizeof(unsigned int));
+    fread(bitmap, sizeof(unsigned int), (data_num + 31) >> 5,bitmapfile);
+    fclose(bitmapfile);
 
     try
     {
@@ -122,14 +214,16 @@ int main( int argc, char* argv[] )
 
         std::vector<float3> vertices;
         //std::ifstream in("/home/sxr/rtdb/SDK/optixDB/tools/generateData/uniform_data_100000000.0_10.txt");
-        std::ifstream in("/home/sxr/rtdb/SDK/myOptixDB/tools/data/uniform_data_100000000.0_10_2.txt");
-        if(!in.is_open())
-        {
-            std::cerr << "can not open file outputdata.txt !" << std::endl;
-            return 1;
-        }
-        createVerticesArray(vertices, in, dimCounts, groupDimScale);
-        in.close();
+        // std::ifstream in("/home/sxr/rtdb/SDK/myOptixDB/tools/data/uniform_data_100000000.0_10_2.txt");
+        // if(!in.is_open())
+        // {
+        //     std::cerr << "can not open file outputdata.txt !" << std::endl;
+        //     return 1;
+        // }
+        // createVerticesArray(vertices, in, dimCounts, groupDimScale);
+        // in.close();
+        FILE *inputfile = fopen("/home/sxr/outputfile_rtdb_q10.txt", "rb");
+        RangeRecord rr = inputfileHandle(vertices, inputfile, dimCounts, groupDimScale, data_num);
 
 
         timer_.commonGetStartTime(0);
@@ -168,7 +262,7 @@ int main( int argc, char* argv[] )
             // Use default options for simplicity.  In a real use case we would want to
             // enable compaction, etc
             OptixAccelBuildOptions accel_options = {};
-            accel_options.buildFlags = OPTIX_BUILD_FLAG_NONE;
+            accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_RANDOM_VERTEX_ACCESS;
             accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
 
             // Triangle build input: simple list of three vertices
@@ -253,7 +347,7 @@ int main( int argc, char* argv[] )
 
             pipeline_compile_options.usesMotionBlur        = false;
             pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-            pipeline_compile_options.numPayloadValues      = 2;
+            pipeline_compile_options.numPayloadValues      = 3;
             pipeline_compile_options.numAttributeValues    = 2;
 #ifdef DEBUG // Enables debug exceptions during optix launches. This may incur significant performance cost and should only be done during development.
             pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_DEBUG | OPTIX_EXCEPTION_FLAG_TRACE_DEPTH | OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW;
@@ -440,32 +534,41 @@ int main( int argc, char* argv[] )
 
         timer_.commonGetStartTime(1);
 
-        sutil::CUDAOutputBuffer<int> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
+        width = ((int)rr.maxAvgValue + 1 - (int)rr.minAvgValue + 999) / 1000 + 1;
+        // height = 1;
+        // for(int i = 0; i < groupDimScale.size(); i++) {
+        //     height *= groupDimScale[i];
+        // }
+        // height = 250000;
+        height = groupsmap.size();
+
+        sutil::CUDAOutputBuffer<float> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
         sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
         // sutil::CUDAOutputBuffer<float> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
         // sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, width, height);
 
-        CUDA_CHECK(cudaMemset(output_buffer_0.map(), 0 , height * sizeof(int)));
+        CUDA_CHECK(cudaMemset(output_buffer_0.map(), 0 , height * sizeof(float)));
         CUDA_CHECK(cudaMemset(output_buffer_1.map(), 0 , height * sizeof(int)));
 
         //
         // launch
         //
+        Params params;
         {
             fprintf(stdout,"[execute] Launch begin...\n");
             CUstream stream;
             CUDA_CHECK( cudaStreamCreate( &stream ) );
 
-            Params params;
+
             params.handle = gas_handle;
             params.bias = 1e-5;
             params.rayMode = std::stoi(argv[2]);
-            params.maxSelectValue = 100;
-            params.minSelectValue = 0;
-            params.maxGroupbyValue = 99;
-            params.minGroupbyValue = 0;
-            params.maxWhereValue = 100;
-            params.minWhereValue = std::stoi(argv[1]);
+            params.maxSelectValue = (int)rr.maxAvgValue + 1;
+            params.minSelectValue = (int)rr.minAvgValue;
+            params.maxGroupbyValue = rr.maxGroupValue;
+            params.minGroupbyValue = rr.minGroupValue;
+            params.maxWhereValue = std::stoi(argv[1]);
+            params.minWhereValue = rr.minScanValue;
             params.resultValue = output_buffer_0.map();
             params.resultCount = output_buffer_1.map();
             if(params.rayMode == 0){
@@ -480,6 +583,13 @@ int main( int argc, char* argv[] )
                 params.rayLength = params.maxWhereValue - params.minWhereValue;
                 params.rayLastLength = params.maxWhereValue - params.minWhereValue;
             }
+            params.enableBitmap = useBitmap;
+            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.bitmap ), sizeof(unsigned int) * ((data_num + 31) >> 5) ) );
+            CUDA_CHECK( cudaMemcpy(
+                        reinterpret_cast<void*>( params.bitmap ),
+                        bitmap, sizeof(unsigned int) * ((data_num + 31) >> 5),
+                        cudaMemcpyHostToDevice
+                        ) );
 
             CUdeviceptr d_param;
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_param ), sizeof( Params ) ) );
@@ -491,15 +601,13 @@ int main( int argc, char* argv[] )
 
             timer_.commonGetStartTime(2);
 
+            std::cout << width << ' ' << height << ' ' << depth << std::endl;
+
             OPTIX_CHECK( optixLaunch( pipeline, stream, d_param, sizeof( Params ), &sbt, width, height, depth ) );
             CUDA_SYNC_CHECK();
 
             timer_.commonGetEndTime(2);
-            timer_.commonGetEndTime(1);
-
-            timer_.showTime(1, "Launch(Prepare included)");
-            timer_.showTime(2, "Launch");
-            timer_.clear();
+            
 
             output_buffer_0.unmap();
             output_buffer_1.unmap();
@@ -513,16 +621,37 @@ int main( int argc, char* argv[] )
         //
         {
             fprintf(stdout,"[execute] Display results begin...\n");
-            int* resultValue = output_buffer_0.getHostPointer();
+            float* resultValue = output_buffer_0.getHostPointer();
             int* resultCount = output_buffer_1.getHostPointer();
+
+            timer_.commonGetEndTime(1);
+            timer_.showTime(1, "Launch(Prepare included)");
+            timer_.showTime(2, "Launch");
+            timer_.clear();
+
             std::cout << "---------------------------------------------------" << std::endl;
             fprintf(stdout,"Result below:\n");
             std::vector<int> newGroups = {0,0};
+            int tmpcount = 0;
             for(int i = 0;i < height;++i)
             {
-                groupMergeInverse(newGroups,groupDimScale,dimCounts[1],i);
-                std::cout << newGroups[0] << ' ' << newGroups[1] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << ((double)resultValue[i])/resultCount[i] << std::endl;
+                // groupMergeInverse(newGroups,groupDimScale,dimCounts[1],i);
+                // if(resultCount[i] != 0){
+                //     std::cout << newGroups[0] << ' ' << newGroups[1] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
+                //     //std::cout << inversegroupmap[0][newGroups[0]] << ' ' << inversegroupmap[1][newGroups[1]] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
+                //     tmpcount++;
+                // }   
+                Groups groups = getGroupsFromGroupsMapInverse(i);
+                if(resultCount[i] != 0){
+                    for(int j = 0; j < groups.groupnum; j ++) {
+                        std::cout << groups.groupvector[j] << " ";
+                    }
+                    std::cout  << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
+                    //std::cout << inversegroupmap[0][newGroups[0]] << ' ' << inversegroupmap[1][newGroups[1]] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
+                    tmpcount++;
+                }   
             }
+            std::cout << "Line Num : " << tmpcount << std::endl;
             std::cout << "---------------------------------------------------" << std::endl;
             fprintf(stdout,"[execute] Display results done\n");
         }

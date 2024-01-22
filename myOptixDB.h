@@ -39,8 +39,10 @@ struct Params
     int rayMode;
     float rayLength;
     float rayLastLength;
-    int* resultValue;
+    float* resultValue;
     int* resultCount;
+    bool enableBitmap;
+    unsigned int *bitmap;
 };
 
 

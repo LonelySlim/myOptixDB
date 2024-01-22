@@ -45,7 +45,7 @@ extern "C" __global__ void __raygen__rg()
 
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
-    float3 ray_origin = {idx.x + params.minSelectValue,idx.y + params.minGroupbyValue,idx.z * 2 + params.minWhereValue - params.bias};
+    float3 ray_origin = {idx.x * 1000 + params.minSelectValue, idx.y, idx.z * 2 + params.minWhereValue - params.bias};
     float3 ray_direction = {0,0,1};
 
     float rayLength = params.rayLength + 2 * params.bias;
@@ -56,6 +56,8 @@ extern "C" __global__ void __raygen__rg()
     // Trace the ray against our scene hierarchy
     unsigned int p0 = 0;
     unsigned int p1 = 0;
+    unsigned int p2 = 0;
+
     optixTrace(
             params.handle,
             ray_origin,
@@ -68,10 +70,11 @@ extern "C" __global__ void __raygen__rg()
             0,                   // SBT offset   -- See SBT discussion
             1,                   // SBT stride   -- See SBT discussion
             0,                   // missSBTIndex -- See SBT discussion
-            p0 ,p1);
-
-    atomicAdd(&params.resultValue[idx.y] , p0);
+            p0, p1, p2);
+    
+    atomicAdd(&params.resultValue[idx.y] , (float)p0);
     atomicAdd(&params.resultCount[idx.y] , p1);
+    atomicAdd(&params.resultValue[idx.y] , ((float)p2) / 100);
 }
 
 
@@ -89,7 +92,15 @@ extern "C" __global__ void __closesthit__ch()
 extern "C" __global__ void __anyhit__ah()
 {
     const uint3 idx = optixGetLaunchIndex();
-    optixSetPayload_0(optixGetPayload_0() + idx.x + params.minSelectValue);
-    optixSetPayload_1(optixGetPayload_1() + 1);
+    const unsigned int primIdx = optixGetPrimitiveIndex();
+    float3 vertices[3];
+    optixGetTriangleVertexData(params.handle, primIdx, optixGetSbtGASIndex(), 0.0f, vertices);
+    int bit = (params.bitmap[primIdx >> 5] & (1U << (31 - primIdx % 32)));
+    if(!params.enableBitmap || bit){
+        float resultValue = vertices[0].x - 500.0f;
+        optixSetPayload_0(optixGetPayload_0() + (int)resultValue);
+        optixSetPayload_1(optixGetPayload_1() + 1);
+        optixSetPayload_2(optixGetPayload_2() + (int)((resultValue - (int)resultValue) * 100));
+    }
     optixIgnoreIntersection();
 }
