@@ -45,7 +45,7 @@ extern "C" __global__ void __raygen__rg()
 
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
-    float3 ray_origin = {idx.x * 1000 + params.minSelectValue, idx.y, idx.z * 2 + params.minWhereValue - params.bias};
+    float3 ray_origin = {idx.x * 1000 + params.minSelectValue, params.groupBias[idx.y], idx.z * 2 + params.minWhereValue - params.bias};
     float3 ray_direction = {0,0,1};
 
     float rayLength = params.rayLength + 2 * params.bias;

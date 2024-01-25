@@ -43,6 +43,7 @@ struct Params
     int* resultCount;
     bool enableBitmap;
     unsigned int *bitmap;
+    int * groupBias;
 };
 
 

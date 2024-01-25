@@ -50,12 +50,14 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <thread>
+#include <set>
 #include <float.h>
 
 #include <sutil/Camera.h>
 #include <sutil/Trackball.h>
 
-
+#define THREAD_NUM 20
 
 template <typename T>
 struct SbtRecord
@@ -145,7 +147,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
 //     fprintf(stdout,"[execute] Create vertices array done\n");
 // }
 
-RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int* dimCounts, std::vector<int>& groupDimScale, int data_num) {
+RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int* dimCounts, std::vector<int>& groupDimScale, int data_num, int *groupInfoPerRow) {
     double *avgbuffer[MAX_AVG_NUM];
     int *groupbuffer[MAX_GROUP_NUM];
     int *scanbuffer[MAX_SCAN_NUM];
@@ -183,6 +185,7 @@ RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int*
             groups.groupvector[j] = groupbuffer[j][i];
         }
         int p2 = getGroupFromGroupsMap(groups);
+        groupInfoPerRow[i] = p2;
         rr.modifyGroup(p2);
         int p3 = scanbuffer[0][i];
         rr.modifyScan(p3);
@@ -193,6 +196,29 @@ RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int*
     return rr;
 }
 
+void generateGroupSetPerThread(unsigned int *bitmap, int *groupInfoPerRow, int threadID, int blockSize, std::set<int> &threadGroupSet, int data_num) {
+    int startpos = threadID * blockSize;
+    int upbound = startpos + blockSize;
+    if(upbound > data_num) {
+        upbound = data_num;
+    }
+    for(int i = startpos; i < upbound; i++) {
+        int bit = (bitmap[i >> 5] & (1U << (31 - i % 32)));
+        if(bit) {
+            threadGroupSet.insert(groupInfoPerRow[i]);
+        }
+    }
+}
+
+void mergeGroupSet(std::set<int> &groupSet, vector<std::set<int>> &threadGroupSet) {
+    int n = threadGroupSet.size();
+    for(int i = 0; i < n; i++) {
+        for(auto p : threadGroupSet[i]) {
+            groupSet.insert(p);
+        }
+    }
+}
+
 int main( int argc, char* argv[] )
 {
     int         width;
@@ -201,7 +227,7 @@ int main( int argc, char* argv[] )
     int         dimCounts[3] = {1,2,1};
     vector<int> groupDimScale = {150000,25};
     bool        useBitmap = true;
-    FILE *bitmapfile = fopen("/home/sxr/resultbitmapq10.txt", "rb");
+    FILE *bitmapfile = fopen("/home/sxr/resultbitmapq3.txt", "rb");
     int         data_num = 6001215;
     unsigned int *bitmap = (unsigned int *)malloc(((data_num + 31) >> 5) * sizeof(unsigned int));
     fread(bitmap, sizeof(unsigned int), (data_num + 31) >> 5,bitmapfile);
@@ -222,8 +248,57 @@ int main( int argc, char* argv[] )
         // }
         // createVerticesArray(vertices, in, dimCounts, groupDimScale);
         // in.close();
-        FILE *inputfile = fopen("/home/sxr/outputfile_rtdb_q10.txt", "rb");
-        RangeRecord rr = inputfileHandle(vertices, inputfile, dimCounts, groupDimScale, data_num);
+        FILE *inputfile = fopen("/home/sxr/outputfile_rtdb_q3.txt", "rb");
+        int *groupInfoPerRow = (int *)malloc(sizeof(int) * data_num);
+        RangeRecord rr = inputfileHandle(vertices, inputfile, dimCounts, groupDimScale, data_num, groupInfoPerRow);
+
+        timer_.commonGetStartTime(3);
+
+        // std::map<int, int> recordGroupMap;
+        // for(int i = 0; i < data_num; i++) {
+        //     int bit = (bitmap[i >> 5] & (1U << (31 - i % 32)));
+        //     if(bit) {
+        //         recordGroupMap[groupInfoPerRow[i]] = 1;
+        //     }
+        // }
+        // int *groupBias = (int *)malloc(sizeof(int) * recordGroupMap.size());
+        // int groupBiasSize;
+        // int tmpcount = 0;
+        // for(auto p : recordGroupMap) {
+        //     groupBias[tmpcount] = p.first;
+        //     tmpcount++;
+        // }
+        // groupBiasSize = tmpcount;
+        //unsigned int *groupbitmap = (unsigned int *)malloc(sizeof(unsigned int) * (groupsmap.size() + 31) / 32);
+        std::thread threads[THREAD_NUM];
+        int blockSize = (data_num + THREAD_NUM - 1) / THREAD_NUM;
+        vector<std::set<int>> threadGroupSet(THREAD_NUM);
+        for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
+            threads[threadID] = std::thread(
+                generateGroupSetPerThread,
+                bitmap,
+                groupInfoPerRow,
+                threadID,
+                blockSize,
+                std::ref(threadGroupSet[threadID]),
+                data_num
+            );
+        }
+        for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
+            threads[threadID].join();
+        }
+        std::set<int> groupSet;
+        mergeGroupSet(groupSet, threadGroupSet);
+        int *groupBias = (int *)malloc(sizeof(int) * groupSet.size());
+        int groupBiasSize;
+        int tmpcount = 0;
+        for(auto p : groupSet) {
+            groupBias[tmpcount] = p;
+            tmpcount++;
+        }
+        groupBiasSize = tmpcount;
+
+        timer_.commonGetEndTime(3);
 
 
         timer_.commonGetStartTime(0);
@@ -540,7 +615,7 @@ int main( int argc, char* argv[] )
         //     height *= groupDimScale[i];
         // }
         // height = 250000;
-        height = groupsmap.size();
+        height = groupBiasSize;
 
         sutil::CUDAOutputBuffer<float> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
         sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
@@ -590,6 +665,12 @@ int main( int argc, char* argv[] )
                         bitmap, sizeof(unsigned int) * ((data_num + 31) >> 5),
                         cudaMemcpyHostToDevice
                         ) );
+            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.groupBias), sizeof(int) * groupBiasSize));
+            CUDA_CHECK( cudaMemcpy(
+                        reinterpret_cast<void**>( params.groupBias),
+                        groupBias, sizeof(int) * groupBiasSize,
+                        cudaMemcpyHostToDevice
+                        )); 
 
             CUdeviceptr d_param;
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_param ), sizeof( Params ) ) );
@@ -627,6 +708,7 @@ int main( int argc, char* argv[] )
             timer_.commonGetEndTime(1);
             timer_.showTime(1, "Launch(Prepare included)");
             timer_.showTime(2, "Launch");
+            timer_.showTime(3, "Handle Groups(what groups should be launched)");
             timer_.clear();
 
             std::cout << "---------------------------------------------------" << std::endl;
@@ -641,7 +723,7 @@ int main( int argc, char* argv[] )
                 //     //std::cout << inversegroupmap[0][newGroups[0]] << ' ' << inversegroupmap[1][newGroups[1]] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
                 //     tmpcount++;
                 // }   
-                Groups groups = getGroupsFromGroupsMapInverse(i);
+                Groups groups = getGroupsFromGroupsMapInverse(groupBias[i]);
                 if(resultCount[i] != 0){
                     for(int j = 0; j < groups.groupnum; j ++) {
                         std::cout << groups.groupvector[j] << " ";
