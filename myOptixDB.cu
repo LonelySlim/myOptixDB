@@ -45,7 +45,21 @@ extern "C" __global__ void __raygen__rg()
 
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
-    float3 ray_origin = {idx.x * 1000 + params.minSelectValue, params.groupBias[idx.y], idx.z * 2 + params.minWhereValue - params.bias};
+    float3 ray_origin;
+    if(params.rayMode == 2) {
+        if(params.enableGroupBias) {
+            ray_origin = {idx.x * params.interval + params.minSelectValue, params.groupBias[idx.y], params.scanCollect[idx.z] - params.bias};
+        } else {
+            ray_origin = {idx.x * params.interval + params.minSelectValue, idx.y, params.scanCollect[idx.z] - params.bias};
+        }
+    }else {
+        if(params.enableGroupBias) {
+            ray_origin = {idx.x * params.interval + params.minSelectValue, params.groupBias[idx.y], idx.z * 2 + params.minWhereValue - params.bias};
+        } else {
+            ray_origin = {idx.x * params.interval + params.minSelectValue, idx.y, idx.z * 2 + params.minWhereValue - params.bias};
+        }
+    }
+    
     float3 ray_direction = {0,0,1};
 
     float rayLength = params.rayLength + 2 * params.bias;
@@ -95,9 +109,12 @@ extern "C" __global__ void __anyhit__ah()
     const unsigned int primIdx = optixGetPrimitiveIndex();
     float3 vertices[3];
     optixGetTriangleVertexData(params.handle, primIdx, optixGetSbtGASIndex(), 0.0f, vertices);
-    int bit = (params.bitmap[primIdx >> 5] & (1U << (31 - primIdx % 32)));
+    int bit = 1;
+    if(params.enableBitmap) {
+        bit = (params.bitmap[primIdx >> 5] & (1U << (31 - primIdx % 32)));
+    }
     if(!params.enableBitmap || bit){
-        float resultValue = vertices[0].x - 500.0f;
+        float resultValue = vertices[0].x - params.interval / 2;
         optixSetPayload_0(optixGetPayload_0() + (int)resultValue);
         optixSetPayload_1(optixGetPayload_1() + 1);
         optixSetPayload_2(optixGetPayload_2() + (int)((resultValue - (int)resultValue) * 100));

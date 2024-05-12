@@ -34,6 +34,8 @@ struct Params
     int maxGroupbyValue;
     int minWhereValue;
     int maxWhereValue;
+    int *scanCollect;
+    int collectCount;
     OptixTraversableHandle handle;
     float bias;
     int rayMode;
@@ -43,7 +45,9 @@ struct Params
     int* resultCount;
     bool enableBitmap;
     unsigned int *bitmap;
+    bool enableGroupBias;
     int * groupBias;
+    int interval;
 };
 
 

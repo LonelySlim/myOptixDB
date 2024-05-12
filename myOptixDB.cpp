@@ -53,6 +53,8 @@
 #include <thread>
 #include <set>
 #include <float.h>
+#include <unistd.h>
+
 
 #include <sutil/Camera.h>
 #include <sutil/Trackball.h>
@@ -147,11 +149,12 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
 //     fprintf(stdout,"[execute] Create vertices array done\n");
 // }
 
-RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int* dimCounts, std::vector<int>& groupDimScale, int data_num, int *groupInfoPerRow) {
+RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int* dimCounts, std::vector<int>& groupDimScale, int data_num, int *groupInfoPerRow, int interval) {
     double *avgbuffer[MAX_AVG_NUM];
     int *groupbuffer[MAX_GROUP_NUM];
     int *scanbuffer[MAX_SCAN_NUM];
     RangeRecord rr;
+    float half_interval = (float)interval / 2;
 
     for(int i = 0;i < dimCounts[0]; i++){
         avgbuffer[i] = (double *)malloc(sizeof(double) * data_num);
@@ -189,9 +192,9 @@ RangeRecord inputfileHandle(std::vector<float3>& vertices, FILE *inputfile, int*
         rr.modifyGroup(p2);
         int p3 = scanbuffer[0][i];
         rr.modifyScan(p3);
-        vertices.push_back({(float)p1 + 500.0f, (float)p2, (float)p3});
-        vertices.push_back({(float)p1 - 500.0f, (float)p2 - 0.5f, (float)p3 - 0.5f});
-        vertices.push_back({(float)p1 - 500.0f, (float)p2 + 0.5f, (float)p3 + 0.5f});
+        vertices.push_back({(float)p1 + half_interval, (float)p2, (float)p3});
+        vertices.push_back({(float)p1 - half_interval, (float)p2 - 0.5f, (float)p3 - 0.5f});
+        vertices.push_back({(float)p1 - half_interval, (float)p2 + 0.5f, (float)p3 + 0.5f});
     }
     return rr;
 }
@@ -224,14 +227,83 @@ int main( int argc, char* argv[] )
     int         width;
     int         height;
     int         depth = 1;
-    int         dimCounts[3] = {1,2,1};
-    vector<int> groupDimScale = {150000,25};
+    int         dimCounts[3] = {1,1,1};
+    vector<int> groupDimScale = {0,0,0};
+    int         data_num = 0;
     bool        useBitmap = true;
-    FILE *bitmapfile = fopen("/home/sxr/resultbitmapq3.txt", "rb");
-    int         data_num = 6001215;
-    unsigned int *bitmap = (unsigned int *)malloc(((data_num + 31) >> 5) * sizeof(unsigned int));
-    fread(bitmap, sizeof(unsigned int), (data_num + 31) >> 5,bitmapfile);
-    fclose(bitmapfile);
+    bool        useGroupBias = true;
+    int         raymode = 1;
+    int         scanRange[2] = {0, 0};
+    char        bitmapFilePath[256] = "\0";
+    char        inputFilePath[256] = "\0";
+    int         interval;
+    int         scanCollect[256];
+    int         collectCount = 0;
+
+    char opt;
+    while ((opt = getopt(argc, argv, "n:r:m:B:g:s::S::c::b:i:w:")) != -1) {
+        switch(opt){
+            case 'n':
+                data_num = atoi(optarg);
+                break;
+            case 'r':
+                raymode = atoi(optarg);
+                break;
+            case 'm':
+                useBitmap = atoi(optarg);
+                break;
+            case 'B':
+                useGroupBias = atoi(optarg);
+                break;
+            case 'g':
+                dimCounts[1] = atoi(optarg);
+                break;
+            case 's':
+                scanRange[0] = atoi(optarg);
+                break;
+            case 'S':
+                scanRange[1] = atoi(optarg);
+                break;
+            case 'c':
+                for(int i = 0; optarg[i] != '\0'; i++) {
+                    if(optarg[i] == ',') {
+                        collectCount++;
+                    }
+                }
+                collectCount++;
+                for(int i = 0; i < collectCount; i++) {
+                    char *delimiter = ",";
+                    char *token;
+                    if(i == 0) {
+                        token = strtok(optarg, delimiter);
+                    } else {
+                        token = strtok(nullptr, delimiter);
+                    }
+                    int ttoken = atoi(token);
+                    scanCollect[i] = ttoken;
+                }
+                break;
+            case 'b':
+                strcpy(bitmapFilePath, optarg);
+                break;
+            case 'i':
+                strcpy(inputFilePath, optarg);
+                break;
+            case 'w':
+                interval = stoi(optarg);
+                break;
+            default:
+                exit(-1);
+        }
+    }
+
+    unsigned int *bitmap;
+    if(useBitmap) {
+        FILE *bitmapfile = fopen(bitmapFilePath, "rb");
+        bitmap = (unsigned int *)malloc(((data_num + 31) >> 5) * sizeof(unsigned int));
+        fread(bitmap, sizeof(unsigned int), (data_num + 31) >> 5,bitmapfile);
+        fclose(bitmapfile);
+    }
 
     try
     {
@@ -248,33 +320,36 @@ int main( int argc, char* argv[] )
         // }
         // createVerticesArray(vertices, in, dimCounts, groupDimScale);
         // in.close();
-        FILE *inputfile = fopen("/home/sxr/outputfile_rtdb_q3.txt", "rb");
+        FILE *inputfile = fopen(inputFilePath, "rb");
         int *groupInfoPerRow = (int *)malloc(sizeof(int) * data_num);
-        RangeRecord rr = inputfileHandle(vertices, inputfile, dimCounts, groupDimScale, data_num, groupInfoPerRow);
+        RangeRecord rr = inputfileHandle(vertices, inputfile, dimCounts, groupDimScale, data_num, groupInfoPerRow, interval);
 
         timer_.commonGetStartTime(3);
 
-        // std::map<int, int> recordGroupMap;
-        // for(int i = 0; i < data_num; i++) {
-        //     int bit = (bitmap[i >> 5] & (1U << (31 - i % 32)));
-        //     if(bit) {
-        //         recordGroupMap[groupInfoPerRow[i]] = 1;
-        //     }
-        // }
-        // int *groupBias = (int *)malloc(sizeof(int) * recordGroupMap.size());
-        // int groupBiasSize;
-        // int tmpcount = 0;
-        // for(auto p : recordGroupMap) {
-        //     groupBias[tmpcount] = p.first;
-        //     tmpcount++;
-        // }
-        // groupBiasSize = tmpcount;
-        //unsigned int *groupbitmap = (unsigned int *)malloc(sizeof(unsigned int) * (groupsmap.size() + 31) / 32);
-        std::thread threads[THREAD_NUM];
-        int blockSize = (data_num + THREAD_NUM - 1) / THREAD_NUM;
-        vector<std::set<int>> threadGroupSet(THREAD_NUM);
-        for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
-            threads[threadID] = std::thread(
+        int groupBiasSize;
+        int *groupBias;
+        if(useBitmap && useGroupBias) {
+            // std::map<int, int> recordGroupMap;
+            // for(int i = 0; i < data_num; i++) {
+            //     int bit = (bitmap[i >> 5] & (1U << (31 - i % 32)));
+            //     if(bit) {
+            //         recordGroupMap[groupInfoPerRow[i]] = 1;
+            //     }
+            // }
+            // int *groupBias = (int *)malloc(sizeof(int) * recordGroupMap.size());
+            // int groupBiasSize;
+            // int tmpcount = 0;
+            // for(auto p : recordGroupMap) {
+            //     groupBias[tmpcount] = p.first;
+            //     tmpcount++;
+            // }
+            // groupBiasSize = tmpcount;
+            //unsigned int *groupbitmap = (unsigned int *)malloc(sizeof(unsigned int) * (groupsmap.size() + 31) / 32);
+            std::thread threads[THREAD_NUM];
+            int blockSize = (data_num + THREAD_NUM - 1) / THREAD_NUM;
+            vector<std::set<int>> threadGroupSet(THREAD_NUM);
+            for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
+                threads[threadID] = std::thread(
                 generateGroupSetPerThread,
                 bitmap,
                 groupInfoPerRow,
@@ -283,20 +358,20 @@ int main( int argc, char* argv[] )
                 std::ref(threadGroupSet[threadID]),
                 data_num
             );
+            }
+            for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
+                threads[threadID].join();
+            }
+            std::set<int> groupSet;
+            mergeGroupSet(groupSet, threadGroupSet);
+            groupBias = (int *)malloc(sizeof(int) * groupSet.size());
+            int tmpcount = 0;
+            for(auto p : groupSet) {
+                groupBias[tmpcount] = p;
+                tmpcount++;
+            }
+            groupBiasSize = tmpcount;
         }
-        for(int threadID = 0; threadID < THREAD_NUM; threadID++) {
-            threads[threadID].join();
-        }
-        std::set<int> groupSet;
-        mergeGroupSet(groupSet, threadGroupSet);
-        int *groupBias = (int *)malloc(sizeof(int) * groupSet.size());
-        int groupBiasSize;
-        int tmpcount = 0;
-        for(auto p : groupSet) {
-            groupBias[tmpcount] = p;
-            tmpcount++;
-        }
-        groupBiasSize = tmpcount;
 
         timer_.commonGetEndTime(3);
 
@@ -607,15 +682,20 @@ int main( int argc, char* argv[] )
         timer_.commonGetEndTime(0);
         timer_.showTime(0, "Initialize");
 
+        for(int rc = 0; rc < 3; rc++) {
+
         timer_.commonGetStartTime(1);
 
-        width = ((int)rr.maxAvgValue + 1 - (int)rr.minAvgValue + 999) / 1000 + 1;
+        width = ((int)rr.maxAvgValue + 1 - (int)rr.minAvgValue + interval - 1) / interval + 1;
         // height = 1;
         // for(int i = 0; i < groupDimScale.size(); i++) {
         //     height *= groupDimScale[i];
         // }
         // height = 250000;
-        height = groupBiasSize;
+        if(useGroupBias)
+            height = groupBiasSize;
+        else
+            height = rr.maxGroupValue - rr.minGroupValue + 1;
 
         sutil::CUDAOutputBuffer<float> output_buffer_0( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
         sutil::CUDAOutputBuffer<int> output_buffer_1( sutil::CUDAOutputBufferType::CUDA_DEVICE, height , 1 );
@@ -636,16 +716,18 @@ int main( int argc, char* argv[] )
 
 
             params.handle = gas_handle;
-            params.bias = 1e-5;
-            params.rayMode = std::stoi(argv[2]);
+            params.bias = 0.5;
+            params.rayMode = raymode;
             params.maxSelectValue = (int)rr.maxAvgValue + 1;
             params.minSelectValue = (int)rr.minAvgValue;
             params.maxGroupbyValue = rr.maxGroupValue;
             params.minGroupbyValue = rr.minGroupValue;
-            params.maxWhereValue = std::stoi(argv[1]);
-            params.minWhereValue = rr.minScanValue;
+            params.maxWhereValue = scanRange[1];
+            params.minWhereValue = scanRange[0];
             params.resultValue = output_buffer_0.map();
             params.resultCount = output_buffer_1.map();
+            params.interval = interval;
+
             if(params.rayMode == 0){
                 depth = (params.maxWhereValue - params.minWhereValue + 2) / 2;
                 params.rayLength = 1.0f;
@@ -657,20 +739,40 @@ int main( int argc, char* argv[] )
             }else if(params.rayMode == 1){
                 params.rayLength = params.maxWhereValue - params.minWhereValue;
                 params.rayLastLength = params.maxWhereValue - params.minWhereValue;
+            }else if(params.rayMode == 2){
+                depth = collectCount;
+                params.rayLength = 0;
+                params.rayLastLength = 0;
+                params.collectCount = collectCount;
+                CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.scanCollect ), sizeof(int) * 256 ) );
+                CUDA_CHECK( cudaMemcpy(
+                        reinterpret_cast<void*>( params.scanCollect ),
+                        scanCollect, sizeof(int) * 256,
+                        cudaMemcpyHostToDevice
+                        ) );
             }
             params.enableBitmap = useBitmap;
-            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.bitmap ), sizeof(unsigned int) * ((data_num + 31) >> 5) ) );
-            CUDA_CHECK( cudaMemcpy(
+
+            if(useBitmap) {
+                CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.bitmap ), sizeof(unsigned int) * ((data_num + 31) >> 5) ) );
+                CUDA_CHECK( cudaMemcpy(
                         reinterpret_cast<void*>( params.bitmap ),
                         bitmap, sizeof(unsigned int) * ((data_num + 31) >> 5),
                         cudaMemcpyHostToDevice
                         ) );
-            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.groupBias), sizeof(int) * groupBiasSize));
-            CUDA_CHECK( cudaMemcpy(
+            }
+
+            params.enableGroupBias = useGroupBias;
+            
+            if(useGroupBias) {
+                CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.groupBias), sizeof(int) * groupBiasSize));
+                CUDA_CHECK( cudaMemcpy(
                         reinterpret_cast<void**>( params.groupBias),
                         groupBias, sizeof(int) * groupBiasSize,
                         cudaMemcpyHostToDevice
                         )); 
+            }
+            
 
             CUdeviceptr d_param;
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_param ), sizeof( Params ) ) );
@@ -694,6 +796,10 @@ int main( int argc, char* argv[] )
             output_buffer_1.unmap();
 
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_param ) ) );
+            if(useGroupBias) 
+                CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.groupBias ) ) );
+            if(useBitmap) 
+                CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.bitmap ) ) );
             fprintf(stdout,"[execute] Launch done\n");
         }
 
@@ -722,8 +828,14 @@ int main( int argc, char* argv[] )
                 //     std::cout << newGroups[0] << ' ' << newGroups[1] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
                 //     //std::cout << inversegroupmap[0][newGroups[0]] << ' ' << inversegroupmap[1][newGroups[1]] << ' ' << resultValue[i] << ' ' << resultCount[i] << ' ' << (resultValue[i])/resultCount[i] << std::endl;
                 //     tmpcount++;
-                // }   
-                Groups groups = getGroupsFromGroupsMapInverse(groupBias[i]);
+                // } 
+                Groups groups;  
+                if(useBitmap && useGroupBias) {
+                    groups = getGroupsFromGroupsMapInverse(groupBias[i]);
+                } else {
+                    groups = getGroupsFromGroupsMapInverse(i);
+                }
+                
                 if(resultCount[i] != 0){
                     for(int j = 0; j < groups.groupnum; j ++) {
                         std::cout << groups.groupvector[j] << " ";
@@ -736,6 +848,8 @@ int main( int argc, char* argv[] )
             std::cout << "Line Num : " << tmpcount << std::endl;
             std::cout << "---------------------------------------------------" << std::endl;
             fprintf(stdout,"[execute] Display results done\n");
+        }
+
         }
         
         //
