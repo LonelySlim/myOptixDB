@@ -120,7 +120,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
               << message << "\n";
 }
 
-RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, int interval_y) {
+RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, int interval_y, bool m) {
     int *avgbuffer[MAX_AVG_NUM];
     int *groupbuffer[MAX_GROUP_NUM];
     int *scanbuffer[MAX_SCAN_NUM];
@@ -158,7 +158,12 @@ RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int*
         for(int j = 0; j < dimCounts[2]; j++) {
             predicates[j] = predicatemap[j][scanbuffer[j][i]];
         }
-        predicateMerge(predicates, dimCounts[2], p3);
+        // predicateMerge(predicates, dimCounts[2], p3);
+        if(m){
+            p3 = predicatemap[0][scanbuffer[0][i]];
+        } else {
+            p3 = 0;
+        }
         rr.modifyScan(p3);
         // vertices.push_back({(float)p1 + half_interval, (float)p2, (float)p3});
         // vertices.push_back({(float)p1 - half_interval, (float)p2 - 0.5f, (float)p3 - 0.5f});
@@ -210,9 +215,11 @@ int main( int argc, char* argv[] )
     int         interval_y;
     int         resultbufferLength;
     bool        complexAvg = false;
+    char        bitmapFilePath[256] = "\0";
+    bool        multiplePredicates = false;
 
     char opt;
-    while ((opt = getopt(argc, argv, "n:g:p:s:i:x:y:a")) != -1) {
+    while ((opt = getopt(argc, argv, "n:g:p:s:i:x:y:ab:m")) != -1) {
         switch(opt){
             case 'n':
                 data_num = atoi(optarg);
@@ -238,10 +245,22 @@ int main( int argc, char* argv[] )
             case 'a':
                 complexAvg = true;
                 break;
+            case 'b':
+                strcpy(bitmapFilePath, optarg);
+                break;
+            case 'm':
+                multiplePredicates = true;
+                break;
             default:
                 exit(-1);
         }
     }
+
+    unsigned int *bitmap;
+    FILE *bitmapfile = fopen(bitmapFilePath, "rb");
+    bitmap = (unsigned int *)malloc(((data_num + 31) >> 5) * sizeof(unsigned int));
+    fread(bitmap, sizeof(unsigned int), (data_num + 31) >> 5,bitmapfile);
+    fclose(bitmapfile);
 
     try
     {
@@ -249,7 +268,7 @@ int main( int argc, char* argv[] )
 
         std::vector<float3> vertices;
         FILE *inputData = fopen(inputDataPath, "rb");
-        RangeRecord rr = inputDataHandle(vertices, inputData, dimCounts, data_num, interval_x, interval_y);
+        RangeRecord rr = inputDataHandle(vertices, inputData, dimCounts, data_num, interval_x, interval_y, multiplePredicates);
 
         int *extraAvgBuffer = nullptr;
         if(complexAvg) {
@@ -586,17 +605,18 @@ int main( int argc, char* argv[] )
                         scanRange[i][j] = predicatemap[i][scanRange[i][j]];
                     }
                 }
-            }
+        }
 
         width = (rr.maxAvgValue - rr.minAvgValue + interval_x) / interval_x + 1;
         height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y + 1;
-        for(int i = 0; i < dimCounts[2]; i++) {
-            if(scanType[i] == 0 && i != dimCounts[2] - 1) {
-                depth *= scanRange[i][1] - scanRange[i][0] + 1;
-            }else if(scanType[i] != 0) {
-                depth *= scanType[i];
-            }
-        }
+        // for(int i = 0; i < dimCounts[2]; i++) {
+        //     if(scanType[i] == 0 && i != dimCounts[2] - 1) {
+        //         depth *= scanRange[i][1] - scanRange[i][0] + 1;
+        //     }else if(scanType[i] != 0) {
+        //         depth *= scanType[i];
+        //     }
+        // }
+        depth = 1;
 
         resultbufferLength = rr.maxGroupValue - rr.minGroupValue + 1;
         sutil::CUDAOutputBuffer<unsigned long long> output_buffer( sutil::CUDAOutputBufferType::CUDA_DEVICE, resultbufferLength , 1 );
@@ -623,43 +643,53 @@ int main( int argc, char* argv[] )
             params.complexAvg = complexAvg;
             params.extraAvgBuffer = d_extraAvgBuffer;
             // params.rayLength = scanRange[lastPredicateIdx * 2 + 1] - scanRange[lastPredicateIdx * 2];
-            if(scanType[lastPredicateIdx] == 0) {
-                params.rayLength = scanRange[lastPredicateIdx][1] - scanRange[lastPredicateIdx][0];
-            } else {
+            // if(scanType[lastPredicateIdx] == 0) {
+            //     params.rayLength = scanRange[lastPredicateIdx][1] - scanRange[lastPredicateIdx][0];
+            // } else {
+            //     params.rayLength = 0;
+            // }
+            if(multiplePredicates) {
                 params.rayLength = 0;
+            } else {
+                params.rayLength  = 0;
             }
 
             // std::cout << "params.rayLength:" << params.rayLength << std::endl;
             
             int *rayOrigin_z = new int[depth];
-            for(int i = 0; i < depth; i++) {
-                int idx = i;
-                int predicates[MAX_SCAN_NUM];
-                
-                for(int j = 0; j < MAX_SCAN_NUM; j++) {
-                    predicates[j] = 0;
-                }
-                for(int j = dimCounts[2] - 1; j >= 0; --j){
-                    if(scanType[j] == 0 && j != dimCounts[2] - 1) {
-                        predicates[j] = idx % (scanRange[j][1] - scanRange[j][0] + 1);
-                        idx /= (scanRange[j][1] - scanRange[j][0] + 1);
-                    } else if(scanType[j] != 0){
-                        predicates[j] = idx % scanType[j];
-                        idx /= scanType[j];
-                    }
-                }
-                for(int j = dimCounts[2] - 1; j >= 0;--j) {
-                    // predicates[j] += scanRange[j * 2];
-                    if(scanType[j] == 0) {
-                        predicates[j] += scanRange[j][0];
-                    } else {
-                        predicates[j] = scanRange[j][predicates[j]];
-                    }
-                }
-                predicateMerge(predicates, dimCounts[2], rayOrigin_z[i]);
-
-                // std::cout << rayOrigin_z[i] << ' ';
+            if(multiplePredicates) {
+                rayOrigin_z[0] = scanRange[0][0];
+            } else {
+                rayOrigin_z[0] = 0;
             }
+            // for(int i = 0; i < depth; i++) {
+            //     int idx = i;
+            //     int predicates[MAX_SCAN_NUM];
+                
+            //     for(int j = 0; j < MAX_SCAN_NUM; j++) {
+            //         predicates[j] = 0;
+            //     }
+            //     for(int j = dimCounts[2] - 1; j >= 0; --j){
+            //         if(scanType[j] == 0 && j != dimCounts[2] - 1) {
+            //             predicates[j] = idx % (scanRange[j][1] - scanRange[j][0] + 1);
+            //             idx /= (scanRange[j][1] - scanRange[j][0] + 1);
+            //         } else if(scanType[j] != 0){
+            //             predicates[j] = idx % scanType[j];
+            //             idx /= scanType[j];
+            //         }
+            //     }
+            //     for(int j = dimCounts[2] - 1; j >= 0;--j) {
+            //         // predicates[j] += scanRange[j * 2];
+            //         if(scanType[j] == 0) {
+            //             predicates[j] += scanRange[j][0];
+            //         } else {
+            //             predicates[j] = scanRange[j][predicates[j]];
+            //         }
+            //     }
+            //     predicateMerge(predicates, dimCounts[2], rayOrigin_z[i]);
+
+            //     // std::cout << rayOrigin_z[i] << ' ';
+            // }
 
             // std::cout << std::endl;
 
@@ -671,6 +701,13 @@ int main( int argc, char* argv[] )
                         ) );
             
             CUDA_CHECK(cudaMemset(params.primFlag, 0 , sizeof(unsigned int) * primFlagLen));
+
+            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &params.bitmap ), sizeof(unsigned int) * ((data_num + 31) >> 5) ) );
+            CUDA_CHECK( cudaMemcpy(
+                        reinterpret_cast<void*>( params.bitmap ),
+                        bitmap, sizeof(unsigned int) * ((data_num + 31) >> 5),
+                        cudaMemcpyHostToDevice
+                        ) );
             
             CUdeviceptr d_param;
             CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_param ), sizeof( Params ) ) );
@@ -691,6 +728,7 @@ int main( int argc, char* argv[] )
             output_buffer.unmap();
 
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_param ) ) );
+            CUDA_CHECK( cudaFree( reinterpret_cast<void*>( params.bitmap ) ) );
 
             std::cout << width << ' ' << height << ' ' << depth << std::endl;
             fprintf(stdout,"[execute] Launch done\n");

@@ -40,6 +40,7 @@ struct Params
     unsigned int *primFlag;
     bool complexAvg;
     int *extraAvgBuffer;
+    unsigned int *bitmap;
 };
 
 

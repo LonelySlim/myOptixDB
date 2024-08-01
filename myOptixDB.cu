@@ -103,11 +103,11 @@ extern "C" __global__ void __anyhit__ah()
     int flagOffset = 31 - primIdx % 32;
     unsigned int flagMask = 1 << flagOffset;
     unsigned int flag = atomicOr(&params.primFlag[flagIndex], flagMask);
+    int bit = (params.bitmap[primIdx >> 5] & (1U << (31 - primIdx % 32)));
     if(!(flagMask & flag)) {
-        // atomicAdd(&params.resultValue[idx.y] , (unsigned long long)resultValue);
-        atomicAdd(&params.resultValue[resultIndex] , (unsigned long long)resultValue);
-        // atomicAdd(&params.resultValue[idx.y] , 1);
-        // atomicAdd(&params.resultValue[resultIndex] , 1);
+        if(bit) {
+            atomicAdd(&params.resultValue[resultIndex] , (unsigned long long)resultValue);
+        } 
     }
     optixIgnoreIntersection();
 }
