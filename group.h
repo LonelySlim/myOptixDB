@@ -7,7 +7,7 @@
 
 #define MAX_AVG_NUM 1
 #define MAX_GROUP_NUM 10
-#define MAX_SCAN_NUM 1
+#define MAX_SCAN_NUM 10
 
 struct Groups{
     int groupvector[MAX_GROUP_NUM];
@@ -33,8 +33,9 @@ bool operator<(const Groups &a, const Groups &b) {
     return false;
 }
 
-std::map<int,int> groupmap[MAX_GROUP_NUM];
-std::map<int,int> inversegroupmap[MAX_GROUP_NUM];
+std::map<int,int> predicatemap[MAX_SCAN_NUM];
+std::map<int,int> inversepredicatemap[MAX_SCAN_NUM];
+int predicateCounts[MAX_SCAN_NUM];
 
 std::map<Groups, int> groupsmap;
 std::map<int, Groups> groupsmapinverse;
@@ -65,34 +66,35 @@ Groups getGroupsFromGroupsMapInverse(int n) {
     return groupsmapinverse[n];
 }
 
-int mapGroup(int *rowGroup, int groupIdx, int data_num){
+int mapPredicate(int *rowPredicate, int predicateIdx, int data_num){
     for(int i = 0; i < data_num; i++) {
-        if(groupmap[groupIdx].find(rowGroup[i]) == groupmap[groupIdx].end()) {
-            groupmap[groupIdx][rowGroup[i]] = 1;
+        if(predicatemap[predicateIdx].find(rowPredicate[i]) == predicatemap[predicateIdx].end()) {
+            predicatemap[predicateIdx][rowPredicate[i]] = 1;
         }
     }
     int count = 0;
-    for(std::map<int,int>::iterator it = groupmap[groupIdx].begin(); it != groupmap[groupIdx].end(); it++) {
-        groupmap[groupIdx][(*it).first] = count;
-        inversegroupmap[groupIdx][count] = (*it).first;
+    for(std::map<int,int>::iterator it = predicatemap[predicateIdx].begin(); it != predicatemap[predicateIdx].end(); it++) {
+        predicatemap[predicateIdx][(*it).first] = count;
+        inversepredicatemap[predicateIdx][count] = (*it).first;
         count++;
     }
+    predicateCounts[predicateIdx] = count;
     return count;
 }
 
-void groupMerge(const std::vector<int>& groups,const std::vector<int>& dimScale,int dimCount,int& group){
-    group = 0;
+void predicateMerge(int *predicates,int dimCount,int& predicate){
+    predicate = 0;
     int rate = 1;
     for(int i = dimCount - 1; i >= 0;--i){
-        group += groups[i] * rate;
-        rate *= dimScale[i];
+        predicate += predicates[i] * rate;
+        rate *= predicateCounts[i];
     }
 }
 
-void groupMergeInverse(std::vector<int>& groups,const std::vector<int>& dimScale,int dimCount,int group){
+void predicateMergeInverse(int *predicates,int dimCount,int predicate){
     for(int i = dimCount - 1; i >= 0;--i){
-        groups[i] = group % dimScale[i];
-        group /= dimScale[i];
+        predicates[i] = predicate % predicateCounts[i];
+        predicate /= predicateCounts[i];
     }
 }
 

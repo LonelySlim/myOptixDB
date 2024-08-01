@@ -46,31 +46,15 @@ extern "C" __global__ void __raygen__rg()
     // Map our launch idx to a screen location and create a ray from the camera
     // location through the screen
     float3 ray_origin;
-    if(params.rayMode == 2) {
-        if(params.enableGroupBias) {
-            ray_origin = {idx.x * params.interval + params.minSelectValue, params.groupBias[idx.y], params.scanCollect[idx.z] - params.bias};
-        } else {
-            ray_origin = {idx.x * params.interval + params.minSelectValue, idx.y, params.scanCollect[idx.z] - params.bias};
-        }
-    }else {
-        if(params.enableGroupBias) {
-            ray_origin = {idx.x * params.interval + params.minSelectValue, params.groupBias[idx.y], idx.z * 2 + params.minWhereValue - params.bias};
-        } else {
-            ray_origin = {idx.x * params.interval + params.minSelectValue, idx.y, idx.z * 2 + params.minWhereValue - params.bias};
-        }
-    }
+    // ray_origin = {idx.x * params.interval + params.minAvgValue, idx.y, params.rayOrigin_z[idx.z] - params.bias};
+    ray_origin = {idx.x * params.interval_x + params.minAvgValue, idx.y * params.interval_y, params.rayOrigin_z[idx.z] - params.bias};
     
     float3 ray_direction = {0,0,1};
 
     float rayLength = params.rayLength + 2 * params.bias;
-    if((params.rayMode == 0) && (idx.z == dim.z - 1)){
-        rayLength = params.rayLastLength + 2 * params.bias;
-    }
 
     // Trace the ray against our scene hierarchy
-    unsigned int p0 = 0;
-    unsigned int p1 = 0;
-    unsigned int p2 = 0;
+    unsigned int p = 0;
 
     optixTrace(
             params.handle,
@@ -84,11 +68,10 @@ extern "C" __global__ void __raygen__rg()
             0,                   // SBT offset   -- See SBT discussion
             1,                   // SBT stride   -- See SBT discussion
             0,                   // missSBTIndex -- See SBT discussion
-            p0, p1, p2);
+            p);
     
-    atomicAdd(&params.resultValue[idx.y] , (float)p0);
-    atomicAdd(&params.resultCount[idx.y] , p1);
-    atomicAdd(&params.resultValue[idx.y] , ((float)p2) / 100);
+    //atomicAdd(&params.resultValue[idx.y] , (unsigned long long)p);
+
 }
 
 
@@ -109,15 +92,22 @@ extern "C" __global__ void __anyhit__ah()
     const unsigned int primIdx = optixGetPrimitiveIndex();
     float3 vertices[3];
     optixGetTriangleVertexData(params.handle, primIdx, optixGetSbtGASIndex(), 0.0f, vertices);
-    int bit = 1;
-    if(params.enableBitmap) {
-        bit = (params.bitmap[primIdx >> 5] & (1U << (31 - primIdx % 32)));
-    }
-    if(!params.enableBitmap || bit){
-        float resultValue = vertices[0].x - params.interval / 2;
-        optixSetPayload_0(optixGetPayload_0() + (int)resultValue);
-        optixSetPayload_1(optixGetPayload_1() + 1);
-        optixSetPayload_2(optixGetPayload_2() + (int)((resultValue - (int)resultValue) * 100));
+    // float resultValue = vertices[0].x - params.interval / 2;
+    unsigned long long resultValue = params.complexAvg ? (unsigned long long)vertices[0].x * params.extraAvgBuffer[primIdx] : (unsigned long long)vertices[0].x;
+    int resultIndex = (int)vertices[0].y;
+
+    //optixSetPayload_0(optixGetPayload_0() + (unsigned)resultValue);
+    //optixSetPayload_0(optixGetPayload_0() + 1);
+
+    int flagIndex = primIdx / 32;
+    int flagOffset = 31 - primIdx % 32;
+    unsigned int flagMask = 1 << flagOffset;
+    unsigned int flag = atomicOr(&params.primFlag[flagIndex], flagMask);
+    if(!(flagMask & flag)) {
+        // atomicAdd(&params.resultValue[idx.y] , (unsigned long long)resultValue);
+        atomicAdd(&params.resultValue[resultIndex] , (unsigned long long)resultValue);
+        // atomicAdd(&params.resultValue[idx.y] , 1);
+        // atomicAdd(&params.resultValue[resultIndex] , 1);
     }
     optixIgnoreIntersection();
 }

@@ -28,26 +28,18 @@
 
 struct Params
 {
-    int minSelectValue;
-    int maxSelectValue;
-    int minGroupbyValue;
-    int maxGroupbyValue;
-    int minWhereValue;
-    int maxWhereValue;
-    int *scanCollect;
-    int collectCount;
     OptixTraversableHandle handle;
     float bias;
-    int rayMode;
-    float rayLength;
-    float rayLastLength;
-    float* resultValue;
-    int* resultCount;
-    bool enableBitmap;
-    unsigned int *bitmap;
-    bool enableGroupBias;
-    int * groupBias;
-    int interval;
+    unsigned long long* resultValue;
+    // int interval;
+    int interval_x;
+    int interval_y;
+    int rayLength;
+    int *rayOrigin_z;
+    int minAvgValue;
+    unsigned int *primFlag;
+    bool complexAvg;
+    int *extraAvgBuffer;
 };
 
 
