@@ -104,10 +104,26 @@ extern "C" __global__ void __anyhit__ah()
     unsigned int flagMask = 1 << flagOffset;
     unsigned int flag = atomicOr(&params.primFlag[flagIndex], flagMask);
     if(!(flagMask & flag)) {
-        // atomicAdd(&params.resultValue[idx.y] , (unsigned long long)resultValue);
-        atomicAdd(&params.resultValue[resultIndex] , (unsigned long long)resultValue);
-        // atomicAdd(&params.resultValue[idx.y] , 1);
-        // atomicAdd(&params.resultValue[resultIndex] , 1);
+        int scanFlag = 1;
+        for(int i = 0; i < params.scanNum; i++) {
+            if(params.scanType[i] == 0) {
+                if(!(params.scanBuffer[i][primIdx] >= params.scanRange[i][0] && params.scanBuffer[i][primIdx] <= params.scanRange[i][1])) {
+                    scanFlag = 0;
+                }
+            }else {
+                int tmpFlag = 1;
+                for(int j = 0; j < params.scanType[i]; j++) {
+                    if(params.scanBuffer[i][primIdx] == params.scanRange[i][j]) {
+                        tmpFlag = 0;
+                    }
+                }
+                if(tmpFlag) {
+                    scanFlag = 0;
+                }
+            }
+        }
+        if(scanFlag)
+            atomicAdd(&params.resultValue[resultIndex] , (unsigned long long)resultValue);
     }
     optixIgnoreIntersection();
 }

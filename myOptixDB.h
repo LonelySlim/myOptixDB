@@ -40,6 +40,10 @@ struct Params
     unsigned int *primFlag;
     bool complexAvg;
     int *extraAvgBuffer;
+    int **scanBuffer;
+    int **scanRange;
+    int *scanType;
+    int scanNum;
 };
 
 
