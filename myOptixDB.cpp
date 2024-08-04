@@ -113,8 +113,8 @@ typedef SbtRecord<HitGroupData>   HitGroupSbtRecord;
 //variable
 //
 Timer                   timer_;
-int **d_scanBuffer = nullptr;
-int **tmpScanBuffer = nullptr;
+int **d_groupBuffer = nullptr;
+int **tmpGroupBuffer = nullptr;
 
 static void context_log_cb( unsigned int level, const char* tag, const char* message, void* /*cbdata */)
 {
@@ -153,15 +153,15 @@ RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int*
         for(int j = 0; j < dimCounts[1]; j++) {
             groups.groupvector[j] = groupbuffer[j][i];
         }
-        int p2 = getGroupFromGroupsMap(groups);
+        // int p2 = getGroupFromGroupsMap(groups);
+        int p2 = groupbuffer[0][i];
         rr.modifyGroup(p2);
         int p3;
         int predicates[MAX_SCAN_NUM];
         for(int j = 0; j < dimCounts[2]; j++) {
             predicates[j] = predicatemap[j][scanbuffer[j][i]];
         }
-        // predicateMerge(predicates, dimCounts[2], p3);
-        p3 = predicates[0];
+        predicateMerge(predicates, dimCounts[2], p3);
         rr.modifyScan(p3);
         // vertices.push_back({(float)p1 + half_interval, (float)p2, (float)p3});
         // vertices.push_back({(float)p1 - half_interval, (float)p2 - 0.5f, (float)p3 - 0.5f});
@@ -170,14 +170,14 @@ RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int*
         vertices.push_back({(float)p1 + 2 * interval_x, (float)p2, (float)p3});
         vertices.push_back({(float)p1, (float)p2 + 2 * interval_y, (float)p3});
     }
-    for(int i = 0; i < dimCounts[2] - 1; i++) {
-            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &tmpScanBuffer[i] ), sizeof( int ) * data_num ) );
+    for(int i = 0; i < dimCounts[1] - 1; i++) {
+            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &tmpGroupBuffer[i] ), sizeof( int ) * data_num ) );
             CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( tmpScanBuffer[i] ),
-                    scanbuffer[i + 1], sizeof( int ) * data_num,
+                    reinterpret_cast<void*>( tmpGroupBuffer[i] ),
+                    groupbuffer[i + 1], sizeof( int ) * data_num,
                     cudaMemcpyHostToDevice
                     ) );
-        }
+    }
     return rr;
 }
 
@@ -254,7 +254,7 @@ int main( int argc, char* argv[] )
         }
     }
 
-    tmpScanBuffer = new int*[dimCounts[2] - 1];
+    tmpGroupBuffer = new int*[dimCounts[1] - 1];
 
     try
     {
@@ -585,35 +585,10 @@ int main( int argc, char* argv[] )
                         ) );
         }
 
-        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_scanBuffer ), sizeof( int* ) * (dimCounts[2] - 1) ) );
+        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_groupBuffer ), sizeof( int* ) * (dimCounts[1] - 1) ) );
         CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( d_scanBuffer ),
-                    tmpScanBuffer, sizeof( int* ) * (dimCounts[2] - 1),
-                    cudaMemcpyHostToDevice
-                    ) );
-
-        int **d_scanRange = nullptr;
-        int **tmpScanRange = new int*[dimCounts[2] - 1];
-        for(int i = 0; i < dimCounts[2] - 1; i++) {
-            CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &tmpScanRange[i] ), sizeof( int ) * 10 ) );
-            CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( tmpScanRange[i] ),
-                    scanRange[i + 1], sizeof( int ) * 10,
-                    cudaMemcpyHostToDevice
-                    ) );
-        }
-        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_scanRange ), sizeof( int* ) * (dimCounts[2] - 1) ) );
-        CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( d_scanRange ),
-                    tmpScanRange, sizeof( int* ) * (dimCounts[2] - 1),
-                    cudaMemcpyHostToDevice
-                    ) );
-
-        int *d_scanType = nullptr;
-        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &d_scanType ), sizeof( int ) * (dimCounts[2] - 1) ) );
-        CUDA_CHECK( cudaMemcpy(
-                    reinterpret_cast<void*>( d_scanType ),
-                    &scanType[1], sizeof( int ) * (dimCounts[2] - 1),
+                    reinterpret_cast<void*>( d_groupBuffer ),
+                    tmpGroupBuffer, sizeof( int* ) * (dimCounts[1] - 1),
                     cudaMemcpyHostToDevice
                     ) );
 
@@ -635,20 +610,21 @@ int main( int argc, char* argv[] )
 
         width = (rr.maxAvgValue - rr.minAvgValue + interval_x) / interval_x + 1;
         height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y + 1;
-        // for(int i = 0; i < dimCounts[2]; i++) {
-        //     if(scanType[i] == 0 && i != dimCounts[2] - 1) {
-        //         depth *= scanRange[i][1] - scanRange[i][0] + 1;
-        //     }else if(scanType[i] != 0) {
-        //         depth *= scanType[i];
-        //     }
-        // }
-        if(scanType[0] == 0) {
-            depth = 1;
-        }else if(scanType[0] != 0) {
-            depth = scanType[0];
+        for(int i = 0; i < dimCounts[2]; i++) {
+            if(scanType[i] == 0 && i != dimCounts[2] - 1) {
+                depth *= scanRange[i][1] - scanRange[i][0] + 1;
+            }else if(scanType[i] != 0) {
+                depth *= scanType[i];
+            }
         }
 
-        resultbufferLength = rr.maxGroupValue - rr.minGroupValue + 1;
+        //TODO: modify here
+        // resultbufferLength = ((1998-1992+1) * (5 * 5 * 40));
+        // resultbufferLength = ((1998-1992+1) * 25 * 25);
+        // resultbufferLength = ((1998-1992+1) * 250 * 250);
+        // resultbufferLength = ((1998-1992+1) * 25);
+        // resultbufferLength = ((1998-1992+1) * 25 * 25);
+        resultbufferLength = ((1998-1992+1) * 250 * 1000);
         sutil::CUDAOutputBuffer<unsigned long long> output_buffer( sutil::CUDAOutputBufferType::CUDA_DEVICE, resultbufferLength , 1 );
 
         CUDA_CHECK(cudaMemset(output_buffer.map(), 0 , resultbufferLength * sizeof(unsigned long long)));
@@ -672,18 +648,11 @@ int main( int argc, char* argv[] )
             params.primFlag = d_primFlag;
             params.complexAvg = complexAvg;
             params.extraAvgBuffer = d_extraAvgBuffer;
-            params.scanBuffer = d_scanBuffer;
-            params.scanRange = d_scanRange;
-            params.scanType = d_scanType;
-            params.scanNum = dimCounts[2] - 1;
+            params.groupBuffer = d_groupBuffer;
+            params.groupNum = dimCounts[1] - 1;
             // params.rayLength = scanRange[lastPredicateIdx * 2 + 1] - scanRange[lastPredicateIdx * 2];
-            // if(scanType[lastPredicateIdx] == 0) {
-            //     params.rayLength = scanRange[lastPredicateIdx][1] - scanRange[lastPredicateIdx][0];
-            // } else {
-            //     params.rayLength = 0;
-            // }
-            if(scanType[0] == 0) {
-                params.rayLength = scanRange[0][1] - scanRange[0][0];
+            if(scanType[lastPredicateIdx] == 0) {
+                params.rayLength = scanRange[lastPredicateIdx][1] - scanRange[lastPredicateIdx][0];
             } else {
                 params.rayLength = 0;
             }
@@ -691,40 +660,33 @@ int main( int argc, char* argv[] )
             // std::cout << "params.rayLength:" << params.rayLength << std::endl;
             
             int *rayOrigin_z = new int[depth];
-            // for(int i = 0; i < depth; i++) {
-            //     int idx = i;
-            //     int predicates[MAX_SCAN_NUM];
+            for(int i = 0; i < depth; i++) {
+                int idx = i;
+                int predicates[MAX_SCAN_NUM];
                 
-            //     for(int j = 0; j < MAX_SCAN_NUM; j++) {
-            //         predicates[j] = 0;
-            //     }
-            //     for(int j = dimCounts[2] - 1; j >= 0; --j){
-            //         if(scanType[j] == 0 && j != dimCounts[2] - 1) {
-            //             predicates[j] = idx % (scanRange[j][1] - scanRange[j][0] + 1);
-            //             idx /= (scanRange[j][1] - scanRange[j][0] + 1);
-            //         } else if(scanType[j] != 0){
-            //             predicates[j] = idx % scanType[j];
-            //             idx /= scanType[j];
-            //         }
-            //     }
-            //     for(int j = dimCounts[2] - 1; j >= 0;--j) {
-            //         // predicates[j] += scanRange[j * 2];
-            //         if(scanType[j] == 0) {
-            //             predicates[j] += scanRange[j][0];
-            //         } else {
-            //             predicates[j] = scanRange[j][predicates[j]];
-            //         }
-            //     }
-            //     predicateMerge(predicates, dimCounts[2], rayOrigin_z[i]);
-
-            //     // std::cout << rayOrigin_z[i] << ' ';
-            // }
-            if(scanType[0] == 0) {
-                rayOrigin_z[0] = scanRange[0][0];
-            } else {
-                for(int i = 0; i < depth; i++) {
-                    rayOrigin_z[i] = scanRange[0][i];
+                for(int j = 0; j < MAX_SCAN_NUM; j++) {
+                    predicates[j] = 0;
                 }
+                for(int j = dimCounts[2] - 1; j >= 0; --j){
+                    if(scanType[j] == 0 && j != dimCounts[2] - 1) {
+                        predicates[j] = idx % (scanRange[j][1] - scanRange[j][0] + 1);
+                        idx /= (scanRange[j][1] - scanRange[j][0] + 1);
+                    } else if(scanType[j] != 0){
+                        predicates[j] = idx % scanType[j];
+                        idx /= scanType[j];
+                    }
+                }
+                for(int j = dimCounts[2] - 1; j >= 0;--j) {
+                    // predicates[j] += scanRange[j * 2];
+                    if(scanType[j] == 0) {
+                        predicates[j] += scanRange[j][0];
+                    } else {
+                        predicates[j] = scanRange[j][predicates[j]];
+                    }
+                }
+                predicateMerge(predicates, dimCounts[2], rayOrigin_z[i]);
+
+                // std::cout << rayOrigin_z[i] << ' ';
             }
 
             // std::cout << std::endl;
