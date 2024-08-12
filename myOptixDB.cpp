@@ -122,7 +122,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
               << message << "\n";
 }
 
-RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, int interval_y) {
+RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, float interval_y) {
     int *avgbuffer[MAX_AVG_NUM];
     int *groupbuffer[MAX_GROUP_NUM];
     int *scanbuffer[MAX_SCAN_NUM];
@@ -218,7 +218,7 @@ int main( int argc, char* argv[] )
     char        inputPredicatePath[256] = "\0";
     // int         interval;
     int         interval_x;
-    int         interval_y;
+    float         interval_y;
     int         resultbufferLength;
     bool        complexAvg = false;
 
@@ -244,7 +244,7 @@ int main( int argc, char* argv[] )
                 interval_x = stoi(optarg);
                 break;
             case 'y':
-                interval_y = stoi(optarg);
+                interval_y = stof(optarg);
                 break;
             case 'a':
                 complexAvg = true;
