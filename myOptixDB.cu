@@ -48,7 +48,7 @@ extern "C" __global__ void __raygen__rg()
     float3 ray_origin;
     // ray_origin = {idx.x * params.interval + params.minAvgValue, idx.y, params.rayOrigin_z[idx.z] - params.bias};
     //TODO: modify here
-    ray_origin = {idx.x * params.interval_x + params.minAvgValue, idx.y * params.interval_y + 1992, params.rayOrigin_z[idx.z] - params.bias};
+    ray_origin = {idx.x * params.interval_x + params.minAvgValue, (idx.y + 1) * params.interval_y + 1992, params.rayOrigin_z[idx.z] - params.bias};
     // ray_origin = {idx.x * params.interval_x + params.minAvgValue, idx.y * params.interval_y, params.rayOrigin_z[idx.z] - params.bias};
     
     float3 ray_direction = {0,0,1};
@@ -107,12 +107,12 @@ extern "C" __global__ void __anyhit__ah()
     unsigned int flag = atomicOr(&params.primFlag[flagIndex], flagMask);
     if(!(flagMask & flag)) {
         //TODO: modify here
-        // int hash = (params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * (5*5*40));
-        // int hash = (params.groupBuffer[1][primIdx] * 25 * 7  + params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 25 * 25);
-        // int hash = (params.groupBuffer[1][primIdx] * 250 * 7  + params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 250 * 250);
-        // int hash = (params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 25);
-        // int hash = ((resultIndex - 1992) * 25 * 25 + params.groupBuffer[0][primIdx] * 25 + params.groupBuffer[1][primIdx]) % ((1998-1992+1) * 25 * 25);
-        int hash = ((resultIndex - 1992) * 250 * 1000 + params.groupBuffer[0][primIdx] * 1000 + params.groupBuffer[1][primIdx]) % ((1998-1992+1) * 250 * 1000);
+        // int hash = (params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * (5*5*40)); //q2
+        // int hash = (params.groupBuffer[1][primIdx] * 25 * 7  + params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 25 * 25); //q31
+        // int hash = (params.groupBuffer[1][primIdx] * 250 * 7  + params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 250 * 250); //q32,33,34
+        // int hash = (params.groupBuffer[0][primIdx] * 7 +  (resultIndex - 1992)) % ((1998-1992+1) * 25); //q41
+        // int hash = ((resultIndex - 1992) * 25 * 25 + params.groupBuffer[0][primIdx] * 25 + params.groupBuffer[1][primIdx]) % ((1998-1992+1) * 25 * 25); //q42
+        int hash = ((resultIndex - 1992) * 250 * 1000 + params.groupBuffer[0][primIdx] * 1000 + params.groupBuffer[1][primIdx]) % ((1998-1992+1) * 250 * 1000); //q43
         atomicAdd(&params.resultValue[hash] , (unsigned long long)resultValue);
     }
     optixIgnoreIntersection();

@@ -33,7 +33,7 @@ struct Params
     unsigned long long* resultValue;
     // int interval;
     int interval_x;
-    float interval_y;
+    int interval_y;
     int rayLength;
     int *rayOrigin_z;
     int minAvgValue;

@@ -122,7 +122,7 @@ static void context_log_cb( unsigned int level, const char* tag, const char* mes
               << message << "\n";
 }
 
-RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, float interval_y) {
+RangeRecord inputDataHandle(std::vector<float3>& vertices, FILE *inputData, int* dimCounts, int data_num, int interval_x, int interval_y) {
     int *avgbuffer[MAX_AVG_NUM];
     int *groupbuffer[MAX_GROUP_NUM];
     int *scanbuffer[MAX_SCAN_NUM];
@@ -218,7 +218,7 @@ int main( int argc, char* argv[] )
     char        inputPredicatePath[256] = "\0";
     // int         interval;
     int         interval_x;
-    float         interval_y;
+    int         interval_y;
     int         resultbufferLength;
     bool        complexAvg = false;
 
@@ -244,7 +244,7 @@ int main( int argc, char* argv[] )
                 interval_x = stoi(optarg);
                 break;
             case 'y':
-                interval_y = stof(optarg);
+                interval_y = stoi(optarg);
                 break;
             case 'a':
                 complexAvg = true;
@@ -609,7 +609,11 @@ int main( int argc, char* argv[] )
             }
 
         width = (rr.maxAvgValue - rr.minAvgValue + interval_x) / interval_x + 1;
-        height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y + 1;
+        height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y;
+        if((rr.maxGroupValue - rr.minGroupValue) % interval_y) {
+            height += 1;
+        }
+
         for(int i = 0; i < dimCounts[2]; i++) {
             if(scanType[i] == 0 && i != dimCounts[2] - 1) {
                 depth *= scanRange[i][1] - scanRange[i][0] + 1;
