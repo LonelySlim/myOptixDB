@@ -589,7 +589,10 @@ int main( int argc, char* argv[] )
             }
 
         width = (rr.maxAvgValue - rr.minAvgValue + interval_x) / interval_x + 1;
-        height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y + 1;
+        height = (rr.maxGroupValue - rr.minGroupValue + interval_y) / interval_y;
+        if((rr.maxGroupValue - rr.minGroupValue) % interval_y) {
+            height += 1;
+        }
         for(int i = 0; i < dimCounts[2]; i++) {
             if(scanType[i] == 0 && i != dimCounts[2] - 1) {
                 depth *= scanRange[i][1] - scanRange[i][0] + 1;

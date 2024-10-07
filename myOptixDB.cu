@@ -47,7 +47,7 @@ extern "C" __global__ void __raygen__rg()
     // location through the screen
     float3 ray_origin;
     // ray_origin = {idx.x * params.interval + params.minAvgValue, idx.y, params.rayOrigin_z[idx.z] - params.bias};
-    ray_origin = {idx.x * params.interval_x + params.minAvgValue, idx.y * params.interval_y, params.rayOrigin_z[idx.z] - params.bias};
+    ray_origin = {idx.x * params.interval_x + params.minAvgValue, (idx.y + 1) * params.interval_y, params.rayOrigin_z[idx.z] - params.bias};
     
     float3 ray_direction = {0,0,1};
 
