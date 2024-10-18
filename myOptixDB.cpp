@@ -260,7 +260,7 @@ int main( int argc, char* argv[] )
         std::ifstream inputPredicate(inputPredicatePath);
         inputPredicateHandle(inputPredicate, dimCounts[2], scanRange, scanType);
 
-        timer_.commonGetStartTime(0);
+        // timer_.commonGetStartTime(0);
 
         //
         // Initialize CUDA and create OptiX context
@@ -340,6 +340,8 @@ int main( int argc, char* argv[] )
                         gas_buffer_sizes.outputSizeInBytes
                         ) );
 
+            timer_.commonGetStartTime(0);
+
             OPTIX_CHECK( optixAccelBuild(
                         context,
                         0,                  // CUDA stream
@@ -354,6 +356,10 @@ int main( int argc, char* argv[] )
                         nullptr,            // emitted property list
                         0                   // num emitted properties
                         ) );
+
+            CUDA_SYNC_CHECK();
+            timer_.commonGetEndTime(0);
+            timer_.showTime(0, "Build BVH");
 
             // We can now free the scratch space buffer used during build and the vertex
             // inputs, since they are not needed by our trivial shading method
@@ -572,8 +578,8 @@ int main( int argc, char* argv[] )
                         ) );
         }
 
-        timer_.commonGetEndTime(0);
-        timer_.showTime(0, "Initialize");
+        // timer_.commonGetEndTime(0);
+        // timer_.showTime(0, "Initialize");
 
         timer_.commonGetStartTime(1);
 
