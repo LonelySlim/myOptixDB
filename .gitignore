@@ -1,2 +1,5 @@
 build/
 log/
+ssb_data/*/data.txt
+ssb_data/*/*.csv
+ssb_data/*/outputfile_rtscan_*.txt
