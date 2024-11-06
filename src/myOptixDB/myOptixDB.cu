@@ -29,7 +29,7 @@
 #include <optix.h>
 
 #include "myOptixDB.h"
-#include <cuda/helpers.h>
+// #include <cuda/helpers.h>
 #include <cuda_runtime.h>
 #include <sutil/vec_math.h>
 

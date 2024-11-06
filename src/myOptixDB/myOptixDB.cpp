@@ -35,7 +35,6 @@
 
 #include <sampleConfig.h>
 
-#include <sutil/CUDAOutputBuffer.h>
 #include <sutil/Exception.h>
 #include <sutil/sutil.h>
 
@@ -608,9 +607,9 @@ int main( int argc, char* argv[] )
         }
 
         resultbufferLength = rr.maxGroupValue - rr.minGroupValue + 1;
-        sutil::CUDAOutputBuffer<unsigned long long> output_buffer( sutil::CUDAOutputBufferType::CUDA_DEVICE, resultbufferLength , 1 );
-
-        CUDA_CHECK(cudaMemset(output_buffer.map(), 0 , resultbufferLength * sizeof(unsigned long long)));
+        unsigned long long* output_buffer = nullptr;
+        CUDA_CHECK( cudaMalloc( reinterpret_cast<void**>( &output_buffer ), sizeof( unsigned long long ) * resultbufferLength ) );
+        CUDA_CHECK( cudaMemset( reinterpret_cast<void*>(output_buffer), 0 , resultbufferLength * sizeof(unsigned long long)) );
 
         //
         // launch
@@ -625,7 +624,7 @@ int main( int argc, char* argv[] )
             params.handle = gas_handle;
             params.bias = 0.5;
             params.minAvgValue = (int)rr.minAvgValue;
-            params.resultValue = output_buffer.map();
+            params.resultValue = output_buffer;
             params.interval_x = interval_x;
             params.interval_y = interval_y;
             params.primFlag = d_primFlag;
@@ -697,8 +696,6 @@ int main( int argc, char* argv[] )
             timer_.commonGetEndTime(2);
             timer_.commonGetEndTime(1);
 
-            output_buffer.unmap();
-
             CUDA_CHECK( cudaFree( reinterpret_cast<void*>( d_param ) ) );
 
             std::cout << width << ' ' << height << ' ' << depth << std::endl;
@@ -710,7 +707,13 @@ int main( int argc, char* argv[] )
         //
         {
             fprintf(stdout,"[execute] Display results begin...\n");
-            unsigned long long* resultValue = output_buffer.getHostPointer();
+            unsigned long long *resultValue = new unsigned long long[resultbufferLength];
+            CUDA_CHECK( cudaMemcpy(
+                        resultValue,
+                        reinterpret_cast<void*>( output_buffer ), sizeof( unsigned long long ) * resultbufferLength,
+                        cudaMemcpyDeviceToHost
+                        ) );
+            CUDA_CHECK( cudaFree( reinterpret_cast<void*>( output_buffer ) ) );
 
             timer_.showTime(1, "Launch(Prepare included)");
             timer_.showTime(2, "Launch");
