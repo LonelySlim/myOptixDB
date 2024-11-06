@@ -38,7 +38,7 @@
 #include <sutil/Exception.h>
 #include <sutil/sutil.h>
 
-#include "myOptixDB.h"
+#include "raydb.h"
 #include "timer.h"
 #include "group.h"
 
@@ -391,7 +391,7 @@ int main( int argc, char* argv[] )
             pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
             pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
 
-            const std::string ptx = sutil::getPtxString( OPTIX_SAMPLE_NAME, OPTIX_SAMPLE_DIR, "myOptixDB.cu" );
+            const std::string ptx = sutil::getPtxString( OPTIX_SAMPLE_NAME, OPTIX_SAMPLE_DIR, "raydb.cu" );
             size_t sizeof_log = sizeof( log );
 
             OPTIX_CHECK_LOG( optixModuleCreateFromPTX(

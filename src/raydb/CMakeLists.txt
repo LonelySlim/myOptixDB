@@ -26,10 +26,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-OPTIX_add_sample_executable( myOptixDB target_name
-  myOptixDB.cu
-  myOptixDB.cpp
-  myOptixDB.h
+OPTIX_add_sample_executable( raydb target_name
+  raydb.cu
+  raydb.cpp
+  raydb.h
   timer.h
   group.h
   OPTIONS -rdc true

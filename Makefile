@@ -1,8 +1,8 @@
 raydb-build = ./build
 optix-lib = $(raydb-build)/lib
 
-raydb-src = ./src/myOptixDB
-raydb-srcs = $(raydb-src)/myOptixDB.cu $(raydb-src)/myOptixDB.cpp $(raydb-src)/myOptixDB.h $(raydb-src)/timer.h $(raydb-src)/group.h 
+raydb-src = ./src/raydb
+raydb-srcs = $(raydb-src)/raydb.cu $(raydb-src)/raydb.cpp $(raydb-src)/raydb.h $(raydb-src)/timer.h $(raydb-src)/group.h 
 
 ifndef BUILD_TYPE
 	BUILD_TYPE = Release
